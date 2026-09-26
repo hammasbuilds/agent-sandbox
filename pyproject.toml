@@ -1,0 +1,35 @@
+[project]
+name = "agent-sandbox"
+version = "0.1.0"
+description = "A sandbox for running AI-generated code, and a chaos suite that measures what each hardening profile actually stops"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Muhammad Hammas" }]
+dependencies = []
+
+[project.scripts]
+agent-sandbox = "agent_sandbox.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.16,<0.17"]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+    "docker: test needs a running Docker engine (skipped when absent)",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
