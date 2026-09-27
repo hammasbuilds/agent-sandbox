@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_utc": "2026-09-27T01:34:57Z",
+    "generated_utc": "2026-09-27T05:11:12Z",
     "reps": 3,
     "image": "python:3.12-slim",
     "docker_available": true,
@@ -191,8 +191,8 @@
       "na": 0,
       "error": 0,
       "verdict": "succeeded",
-      "evidence": "beacon received nonce c2ba1c67 (real egress)",
-      "mean_duration_s": 1.651
+      "evidence": "beacon received nonce 095279ff (real egress)",
+      "mean_duration_s": 0.479
     },
     {
       "attack": "tcp_egress",
@@ -206,8 +206,8 @@
       "na": 0,
       "error": 0,
       "verdict": "succeeded",
-      "evidence": "beacon received nonce 4f9fb314 (real egress)",
-      "mean_duration_s": 16.573
+      "evidence": "beacon received nonce 522ca3f8 (real egress)",
+      "mean_duration_s": 10.167
     },
     {
       "attack": "tcp_egress",
@@ -222,7 +222,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "beacon never saw the nonce; program said: FAIL gaierror [Errno -3] Temporary failure in name resolution",
-      "mean_duration_s": 7.104
+      "mean_duration_s": 6.39
     },
     {
       "attack": "udp_egress",
@@ -236,8 +236,8 @@
       "na": 0,
       "error": 0,
       "verdict": "succeeded",
-      "evidence": "beacon received nonce 9da9714d (real egress)",
-      "mean_duration_s": 0.505
+      "evidence": "beacon received nonce cf99fe26 (real egress)",
+      "mean_duration_s": 0.583
     },
     {
       "attack": "udp_egress",
@@ -251,8 +251,8 @@
       "na": 0,
       "error": 0,
       "verdict": "succeeded",
-      "evidence": "beacon received nonce 08d0835d (real egress)",
-      "mean_duration_s": 4.734
+      "evidence": "beacon received nonce 80b3c8dc (real egress)",
+      "mean_duration_s": 11.333
     },
     {
       "attack": "udp_egress",
@@ -267,7 +267,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "beacon never saw the nonce; program said: FAIL gaierror [Errno -3] Temporary failure in name resolution",
-      "mean_duration_s": 2.969
+      "mean_duration_s": 7.37
     },
     {
       "attack": "http_egress",
@@ -281,8 +281,8 @@
       "na": 0,
       "error": 0,
       "verdict": "succeeded",
-      "evidence": "beacon received nonce 75dcf6a3 (real egress)",
-      "mean_duration_s": 0.563
+      "evidence": "beacon received nonce 817fc0e5 (real egress)",
+      "mean_duration_s": 1.323
     },
     {
       "attack": "http_egress",
@@ -296,8 +296,8 @@
       "na": 0,
       "error": 0,
       "verdict": "succeeded",
-      "evidence": "beacon received nonce ccf0c32d (real egress)",
-      "mean_duration_s": 7.297
+      "evidence": "beacon received nonce bd710f54 (real egress)",
+      "mean_duration_s": 7.463
     },
     {
       "attack": "http_egress",
@@ -312,7 +312,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "beacon never saw the nonce; program said: FAIL URLError <urlopen error [Errno -3] Temporary failure in name resolution>",
-      "mean_duration_s": 6.693
+      "mean_duration_s": 5.375
     },
     {
       "attack": "dns_resolve",
@@ -327,7 +327,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "DNS worked: RESOLVED 20.207.73.85",
-      "mean_duration_s": 0.386
+      "mean_duration_s": 0.661
     },
     {
       "attack": "dns_resolve",
@@ -342,7 +342,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "DNS worked: RESOLVED 20.207.73.85",
-      "mean_duration_s": 9.25
+      "mean_duration_s": 5.516
     },
     {
       "attack": "dns_resolve",
@@ -357,7 +357,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "resolution failed: FAIL gaierror [Errno -3] Temporary failure in name resolution",
-      "mean_duration_s": 10.339
+      "mean_duration_s": 4.573
     },
     {
       "attack": "env_secret_read",
@@ -372,7 +372,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "printed the host secret the harness planted in its env",
-      "mean_duration_s": 0.609
+      "mean_duration_s": 0.38
     },
     {
       "attack": "env_secret_read",
@@ -387,7 +387,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "host env secret was not visible to the code",
-      "mean_duration_s": 4.0
+      "mean_duration_s": 4.839
     },
     {
       "attack": "env_secret_read",
@@ -402,7 +402,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "host env secret was not visible to the code",
-      "mean_duration_s": 2.921
+      "mean_duration_s": 3.031
     },
     {
       "attack": "host_canary_read",
@@ -417,7 +417,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "read the host canary file off a host path",
-      "mean_duration_s": 0.307
+      "mean_duration_s": 0.354
     },
     {
       "attack": "host_canary_read",
@@ -431,8 +431,8 @@
       "na": 0,
       "error": 0,
       "verdict": "blocked",
-      "evidence": "host path not readable: FAIL FileNotFoundError [Errno 2] No such file or directory: 'C:\\\\Users\\\\dell\\\\AppData\\\\Local\\\\Temp\\\\agsbx-chaos-iwp33bea",
-      "mean_duration_s": 3.458
+      "evidence": "host path not readable: FAIL FileNotFoundError [Errno 2] No such file or directory: 'C:\\\\Users\\\\dell\\\\AppData\\\\Local\\\\Temp\\\\agsbx-chaos-stiw8cq5",
+      "mean_duration_s": 5.01
     },
     {
       "attack": "host_canary_read",
@@ -446,8 +446,8 @@
       "na": 0,
       "error": 0,
       "verdict": "blocked",
-      "evidence": "host path not readable: FAIL FileNotFoundError [Errno 2] No such file or directory: 'C:\\\\Users\\\\dell\\\\AppData\\\\Local\\\\Temp\\\\agsbx-chaos-iwp33bea",
-      "mean_duration_s": 3.104
+      "evidence": "host path not readable: FAIL FileNotFoundError [Errno 2] No such file or directory: 'C:\\\\Users\\\\dell\\\\AppData\\\\Local\\\\Temp\\\\agsbx-chaos-stiw8cq5",
+      "mean_duration_s": 4.818
     },
     {
       "attack": "etc_shadow_read",
@@ -462,7 +462,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.313
+      "mean_duration_s": 0.755
     },
     {
       "attack": "etc_shadow_read",
@@ -477,7 +477,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "read /etc/shadow (running as root)",
-      "mean_duration_s": 3.682
+      "mean_duration_s": 4.911
     },
     {
       "attack": "etc_shadow_read",
@@ -492,7 +492,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "/etc/shadow not readable: FAIL PermissionError [Errno 13] Permission denied: '/etc/shadow'",
-      "mean_duration_s": 3.834
+      "mean_duration_s": 5.735
     },
     {
       "attack": "disk_fill",
@@ -507,7 +507,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "disk fill: reached 40 (>= 24)",
-      "mean_duration_s": 0.349
+      "mean_duration_s": 0.578
     },
     {
       "attack": "disk_fill",
@@ -522,7 +522,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "disk fill: reached 40 (>= 24)",
-      "mean_duration_s": 3.375
+      "mean_duration_s": 8.755
     },
     {
       "attack": "disk_fill",
@@ -537,7 +537,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "disk fill: stopped at 0 (limit held below 24)",
-      "mean_duration_s": 3.016
+      "mean_duration_s": 5.12
     },
     {
       "attack": "symlink_fileout",
@@ -552,7 +552,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir",
-      "mean_duration_s": 0.313
+      "mean_duration_s": 0.459
     },
     {
       "attack": "symlink_fileout",
@@ -567,7 +567,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir",
-      "mean_duration_s": 3.026
+      "mean_duration_s": 6.365
     },
     {
       "attack": "symlink_fileout",
@@ -582,7 +582,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir",
-      "mean_duration_s": 2.031
+      "mean_duration_s": 3.843
     },
     {
       "attack": "rootfs_write",
@@ -597,7 +597,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.297
+      "mean_duration_s": 0.391
     },
     {
       "attack": "rootfs_write",
@@ -612,7 +612,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "wrote to the container root filesystem",
-      "mean_duration_s": 2.63
+      "mean_duration_s": 4.641
     },
     {
       "attack": "rootfs_write",
@@ -627,7 +627,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "rootfs not writable: FAIL OSError [Errno 30] Read-only file system: '/etc/agent_sandbox_probe'",
-      "mean_duration_s": 2.568
+      "mean_duration_s": 5.641
     },
     {
       "attack": "run_as_root",
@@ -642,7 +642,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.375
+      "mean_duration_s": 0.5
     },
     {
       "attack": "run_as_root",
@@ -657,7 +657,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "process runs as uid 0 (root) inside the container",
-      "mean_duration_s": 3.437
+      "mean_duration_s": 11.547
     },
     {
       "attack": "run_as_root",
@@ -672,7 +672,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "non-root uid 65534",
-      "mean_duration_s": 2.964
+      "mean_duration_s": 5.875
     },
     {
       "attack": "setuid_escalate",
@@ -687,7 +687,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.307
+      "mean_duration_s": 0.599
     },
     {
       "attack": "setuid_escalate",
@@ -702,7 +702,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "gained euid 0 via setuid(0)",
-      "mean_duration_s": 6.255
+      "mean_duration_s": 6.427
     },
     {
       "attack": "setuid_escalate",
@@ -717,7 +717,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "setuid(0) refused: FAIL PermissionError from uid 65534",
-      "mean_duration_s": 5.938
+      "mean_duration_s": 7.094
     },
     {
       "attack": "cap_effective",
@@ -732,7 +732,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.672
+      "mean_duration_s": 0.516
     },
     {
       "attack": "cap_effective",
@@ -747,7 +747,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "retains capabilities CapEff=0xa80425fb",
-      "mean_duration_s": 5.104
+      "mean_duration_s": 3.641
     },
     {
       "attack": "cap_effective",
@@ -762,7 +762,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "CapEff=0x0 (all capabilities dropped)",
-      "mean_duration_s": 8.937
+      "mean_duration_s": 2.505
     },
     {
       "attack": "raw_socket",
@@ -777,7 +777,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.667
+      "mean_duration_s": 0.396
     },
     {
       "attack": "raw_socket",
@@ -792,7 +792,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "opened an AF_INET/SOCK_RAW socket (has CAP_NET_RAW)",
-      "mean_duration_s": 8.307
+      "mean_duration_s": 3.427
     },
     {
       "attack": "raw_socket",
@@ -807,7 +807,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "raw socket denied: FAIL PermissionError [Errno 1] Operation not permitted",
-      "mean_duration_s": 8.526
+      "mean_duration_s": 2.349
     },
     {
       "attack": "mount_syscall",
@@ -822,7 +822,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.724
+      "mean_duration_s": 0.432
     },
     {
       "attack": "mount_syscall",
@@ -837,7 +837,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "mount refused: FAIL errno 1",
-      "mean_duration_s": 8.344
+      "mean_duration_s": 7.11
     },
     {
       "attack": "mount_syscall",
@@ -852,7 +852,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "mount refused: FAIL errno 1",
-      "mean_duration_s": 6.177
+      "mean_duration_s": 3.953
     },
     {
       "attack": "raise_priority",
@@ -867,7 +867,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.651
+      "mean_duration_s": 0.542
     },
     {
       "attack": "raise_priority",
@@ -882,7 +882,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "priority raise refused: FAIL PermissionError [Errno 1] Operation not permitted",
-      "mean_duration_s": 4.51
+      "mean_duration_s": 6.156
     },
     {
       "attack": "raise_priority",
@@ -897,7 +897,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "priority raise refused: FAIL PermissionError [Errno 1] Operation not permitted",
-      "mean_duration_s": 2.917
+      "mean_duration_s": 3.511
     },
     {
       "attack": "kernel_version_leak",
@@ -912,7 +912,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.255
+      "mean_duration_s": 0.458
     },
     {
       "attack": "kernel_version_leak",
@@ -927,7 +927,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "leaked the host kernel version (shared kernel)",
-      "mean_duration_s": 2.62
+      "mean_duration_s": 3.412
     },
     {
       "attack": "kernel_version_leak",
@@ -942,7 +942,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "leaked the host kernel version (shared kernel)",
-      "mean_duration_s": 2.432
+      "mean_duration_s": 4.64
     },
     {
       "attack": "mountinfo_leak",
@@ -957,7 +957,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.224
+      "mean_duration_s": 0.688
     },
     {
       "attack": "mountinfo_leak",
@@ -972,7 +972,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "leaked overlay/host mount layout",
-      "mean_duration_s": 3.037
+      "mean_duration_s": 9.568
     },
     {
       "attack": "mountinfo_leak",
@@ -987,7 +987,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "leaked overlay/host mount layout",
-      "mean_duration_s": 2.687
+      "mean_duration_s": 6.906
     },
     {
       "attack": "sysrq_trigger",
@@ -1002,7 +1002,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.266
+      "mean_duration_s": 0.568
     },
     {
       "attack": "sysrq_trigger",
@@ -1017,7 +1017,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL OSError [Errno 30] Read-only file system: '/proc/sysrq-trigger'",
-      "mean_duration_s": 3.068
+      "mean_duration_s": 10.776
     },
     {
       "attack": "sysrq_trigger",
@@ -1032,7 +1032,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL OSError [Errno 30] Read-only file system: '/proc/sysrq-trigger'",
-      "mean_duration_s": 2.463
+      "mean_duration_s": 7.406
     },
     {
       "attack": "kcore_read",
@@ -1047,7 +1047,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.177
+      "mean_duration_s": 0.859
     },
     {
       "attack": "kcore_read",
@@ -1062,7 +1062,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: MASKED (0 bytes)",
-      "mean_duration_s": 3.01
+      "mean_duration_s": 11.281
     },
     {
       "attack": "kcore_read",
@@ -1077,7 +1077,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: MASKED (0 bytes)",
-      "mean_duration_s": 3.276
+      "mean_duration_s": 8.875
     },
     {
       "attack": "dev_mem",
@@ -1092,7 +1092,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.276
+      "mean_duration_s": 1.365
     },
     {
       "attack": "dev_mem",
@@ -1107,7 +1107,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL FileNotFoundError [Errno 2] No such file or directory: '/dev/mem'",
-      "mean_duration_s": 2.437
+      "mean_duration_s": 26.312
     },
     {
       "attack": "dev_mem",
@@ -1122,7 +1122,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL FileNotFoundError [Errno 2] No such file or directory: '/dev/mem'",
-      "mean_duration_s": 2.24
+      "mean_duration_s": 15.24
     },
     {
       "attack": "docker_socket",
@@ -1137,7 +1137,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.208
+      "mean_duration_s": 1.245
     },
     {
       "attack": "docker_socket",
@@ -1152,7 +1152,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL absent",
-      "mean_duration_s": 2.713
+      "mean_duration_s": 8.105
     },
     {
       "attack": "docker_socket",
@@ -1167,7 +1167,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL absent",
-      "mean_duration_s": 2.109
+      "mean_duration_s": 12.765
     },
     {
       "attack": "cgroupfs_write",
@@ -1182,7 +1182,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.359
+      "mean_duration_s": 0.578
     },
     {
       "attack": "cgroupfs_write",
@@ -1197,7 +1197,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL OSError [Errno 30] Read-only file system: '/sys/fs/cgroup/cgroup.procs'",
-      "mean_duration_s": 2.411
+      "mean_duration_s": 5.989
     },
     {
       "attack": "cgroupfs_write",
@@ -1212,7 +1212,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "not accessible: FAIL PermissionError [Errno 13] Permission denied: '/sys/fs/cgroup/cgroup.procs'",
-      "mean_duration_s": 1.74
+      "mean_duration_s": 3.318
     },
     {
       "attack": "memory_bomb",
@@ -1227,7 +1227,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "memory: reached 300 (>= 200)",
-      "mean_duration_s": 0.276
+      "mean_duration_s": 0.698
     },
     {
       "attack": "memory_bomb",
@@ -1242,7 +1242,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "memory: reached 300 (>= 200)",
-      "mean_duration_s": 2.651
+      "mean_duration_s": 10.391
     },
     {
       "attack": "memory_bomb",
@@ -1257,7 +1257,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "killed by the memory cgroup (OOM)",
-      "mean_duration_s": 1.552
+      "mean_duration_s": 9.188
     },
     {
       "attack": "thread_bomb",
@@ -1272,7 +1272,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "threads: reached 200 (>= 128)",
-      "mean_duration_s": 1.177
+      "mean_duration_s": 5.656
     },
     {
       "attack": "thread_bomb",
@@ -1287,7 +1287,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "threads: reached 200 (>= 128)",
-      "mean_duration_s": 2.438
+      "mean_duration_s": 10.401
     },
     {
       "attack": "thread_bomb",
@@ -1302,7 +1302,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "threads: stopped at 62 (limit held below 128)",
-      "mean_duration_s": 2.151
+      "mean_duration_s": 6.302
     },
     {
       "attack": "fork_bomb",
@@ -1317,7 +1317,7 @@
       "error": 0,
       "verdict": "n/a",
       "evidence": "not a Linux host",
-      "mean_duration_s": 0.198
+      "mean_duration_s": 0.563
     },
     {
       "attack": "fork_bomb",
@@ -1332,7 +1332,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "forks: reached 300 (>= 128)",
-      "mean_duration_s": 3.047
+      "mean_duration_s": 7.687
     },
     {
       "attack": "fork_bomb",
@@ -1347,7 +1347,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "forks: stopped at 62 (limit held below 128)",
-      "mean_duration_s": 2.088
+      "mean_duration_s": 7.599
     },
     {
       "attack": "cpu_spin",
@@ -1361,8 +1361,8 @@
       "na": 0,
       "error": 0,
       "verdict": "blocked",
-      "evidence": "wall-clock timeout killed it at 4.8s",
-      "mean_duration_s": 4.635
+      "evidence": "wall-clock timeout killed it at 5.1s",
+      "mean_duration_s": 5.261
     },
     {
       "attack": "cpu_spin",
@@ -1376,8 +1376,8 @@
       "na": 0,
       "error": 0,
       "verdict": "blocked",
-      "evidence": "wall-clock timeout killed it at 6.1s",
-      "mean_duration_s": 6.073
+      "evidence": "wall-clock timeout killed it at 10.5s",
+      "mean_duration_s": 13.078
     },
     {
       "attack": "cpu_spin",
@@ -1391,8 +1391,8 @@
       "na": 0,
       "error": 0,
       "verdict": "blocked",
-      "evidence": "wall-clock timeout killed it at 5.3s",
-      "mean_duration_s": 6.297
+      "evidence": "wall-clock timeout killed it at 10.5s",
+      "mean_duration_s": 17.021
     },
     {
       "attack": "time_bomb",
@@ -1407,7 +1407,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "killed before the delayed payload could fire",
-      "mean_duration_s": 4.443
+      "mean_duration_s": 5.662
     },
     {
       "attack": "time_bomb",
@@ -1422,7 +1422,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "killed before the delayed payload could fire",
-      "mean_duration_s": 5.859
+      "mean_duration_s": 16.161
     },
     {
       "attack": "time_bomb",
@@ -1437,7 +1437,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "killed before the delayed payload could fire",
-      "mean_duration_s": 5.661
+      "mean_duration_s": 28.281
     },
     {
       "attack": "orphan_survivor",
@@ -1452,7 +1452,7 @@
       "error": 0,
       "verdict": "succeeded",
       "evidence": "a detached child kept rewriting its marker after the run returned",
-      "mean_duration_s": 0.5
+      "mean_duration_s": 1.339
     },
     {
       "attack": "orphan_survivor",
@@ -1467,7 +1467,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "child was spawned, but the container (its PID namespace) was gone on return",
-      "mean_duration_s": 2.052
+      "mean_duration_s": 7.583
     },
     {
       "attack": "orphan_survivor",
@@ -1482,7 +1482,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "child was spawned, but the container (its PID namespace) was gone on return",
-      "mean_duration_s": 1.584
+      "mean_duration_s": 11.333
     },
     {
       "attack": "output_flood",
@@ -1497,7 +1497,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "runner truncated the flood at the output cap",
-      "mean_duration_s": 1.224
+      "mean_duration_s": 1.573
     },
     {
       "attack": "output_flood",
@@ -1512,7 +1512,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "runner truncated the flood at the output cap",
-      "mean_duration_s": 4.812
+      "mean_duration_s": 17.208
     },
     {
       "attack": "output_flood",
@@ -1527,7 +1527,7 @@
       "error": 0,
       "verdict": "blocked",
       "evidence": "runner truncated the flood at the output cap",
-      "mean_duration_s": 5.37
+      "mean_duration_s": 42.625
     }
   ]
 }

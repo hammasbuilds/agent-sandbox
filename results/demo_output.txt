@@ -1,0 +1,33 @@
+============================================================================
+1) A normal task: sum the integers on stdin (known answer: 15)
+============================================================================
+profile   : hardened
+stdout    : '15'
+exit_code : 0
+
+============================================================================
+2) Five attacks x three profiles -- outcome decided by the harness
+============================================================================
+attack             subprocess     default    hardened
+-----------------------------------------------------
+env_secret_read     succeeded     blocked     blocked
+orphan_survivor     succeeded     blocked     blocked
+tcp_egress          succeeded   succeeded     blocked
+run_as_root               n/a   succeeded     blocked
+memory_bomb         succeeded   succeeded     blocked
+
+succeeded = the sandbox did NOT contain it; blocked = it held.
+
+Evidence under default:
+  env_secret_read   blocked    host env secret was not visible to the code
+  orphan_survivor   blocked    child was spawned, but the container (its PID namespace) was gone on return
+  tcp_egress        succeeded  beacon received nonce 50789393 (real egress)
+  run_as_root       succeeded  process runs as uid 0 (root) inside the container
+  memory_bomb       succeeded  memory: reached 300 (>= 200)
+
+Evidence under hardened:
+  env_secret_read   blocked    host env secret was not visible to the code
+  orphan_survivor   blocked    child was spawned, but the container (its PID namespace) was gone on return
+  tcp_egress        blocked    beacon never saw the nonce; program said: FAIL gaierror [Errno -3] Temporary failure in name resolution
+  run_as_root       blocked    non-root uid 65534
+  memory_bomb       blocked    killed by the memory cgroup (OOM)

@@ -1,0 +1,26 @@
+$ agent-sandbox run --profile hardened --timeout 3 --code "while True: pass"
+
+[docker/hardened] exit=124 12.91s TIMED_OUT
+(exit 124)
+
+$ agent-sandbox run --profile hardened --code "import urllib.request; urllib.request.urlopen(\"http://example.com\", timeout=3)"
+urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
+
+[docker/hardened] exit=1 6.81s
+
+$ agent-sandbox run --profile hardened --file-in scores.csv --file-out report.txt --json --code "..."
+{
+  "backend": "docker",
+  "profile": "hardened",
+  "exit_code": 0,
+  "duration_s": 6.157,
+  "timed_out": false,
+  "out_of_memory": false,
+  "output_truncated": false,
+  "error": null,
+  "stdout": "3 rows\n",
+  "stderr": "",
+  "files_out": {
+    "report.txt": "top=bob total=12\n"
+  }
+}

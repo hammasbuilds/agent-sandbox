@@ -1,11 +1,11 @@
 {
-  "generated_utc": "2026-09-27T04:40:16Z",
+  "generated_utc": "2026-09-27T05:22:29Z",
   "windows_host_runs": [
     {
       "reader": "guarded",
       "profile": "subprocess",
       "link_created": false,
-      "payload_said": "FAIL OSError [WinError 1314] A required privilege is not held by the client: '../agsbx-chaos-yg7c_vb8/canary-4d37c074f87",
+      "payload_said": "FAIL OSError [WinError 1314] A required privilege is not held by the client: '../agsbx-chaos-i9y797_y/canary-f911156be14",
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir"
     },
@@ -13,7 +13,7 @@
       "reader": "guarded",
       "profile": "default",
       "link_created": true,
-      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-47cccdc57c1e4704b7514ffa2cddd8d6.txt",
+      "payload_said": "LINKED ../agsbx-chaos-i9y797_y/canary-e9c6797e10324e39b773a04ac683d2c9.txt",
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir"
     },
@@ -21,7 +21,7 @@
       "reader": "guarded",
       "profile": "hardened",
       "link_created": true,
-      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-4fce3d89b1454cf9b5fef1d41193e682.txt",
+      "payload_said": "LINKED ../agsbx-chaos-i9y797_y/canary-36dcd11aa3a44e8e858b358f550e350a.txt",
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir"
     },
@@ -29,7 +29,7 @@
       "reader": "naive",
       "profile": "subprocess",
       "link_created": false,
-      "payload_said": "FAIL OSError [WinError 1314] A required privilege is not held by the client: '../agsbx-chaos-yg7c_vb8/canary-8953ec1fb3e",
+      "payload_said": "FAIL OSError [WinError 1314] A required privilege is not held by the client: '../agsbx-chaos-i9y797_y/canary-ea0fac06ce5",
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir"
     },
@@ -37,7 +37,7 @@
       "reader": "naive",
       "profile": "default",
       "link_created": true,
-      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-b4050da41a574859880e4b1816229661.txt",
+      "payload_said": "LINKED ../agsbx-chaos-i9y797_y/canary-da6ce789333d4a48a8bc789b143fcafc.txt",
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir"
     },
@@ -45,7 +45,7 @@
       "reader": "naive",
       "profile": "hardened",
       "link_created": true,
-      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-fb84a57a3308487bba2615167a90469b.txt",
+      "payload_said": "LINKED ../agsbx-chaos-i9y797_y/canary-b597ec789f054dbfb02c22d15ddd6f1c.txt",
       "verdict": "blocked",
       "evidence": "harness refused to follow the symlink out of the workdir"
     }
