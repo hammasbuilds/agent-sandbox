@@ -33,6 +33,7 @@ def build_run_argv(
         "docker",
         "run",
         "--rm",
+        "--interactive",  # keep stdin open so piped input reaches the code
         "--name",
         container_name,
         "--label",

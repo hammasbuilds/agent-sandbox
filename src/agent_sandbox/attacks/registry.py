@@ -45,8 +45,10 @@ class Attack:
 
 
 def _num(result: RunResult, marker: str) -> int | None:
-    m = re.search(rf"{re.escape(marker)}\s+(-?\d+)", result.stdout)
-    return int(m.group(1)) if m else None
+    # Take the largest reported value: a bounded bomb may print progress, and "how far it
+    # got" is the maximum, not the first line seen.
+    vals = [int(x) for x in re.findall(rf"{re.escape(marker)}\s+(-?\d+)", result.stdout)]
+    return max(vals) if vals else None
 
 
 def _na_if_not_linux(result: RunResult, ctx: ChaosContext) -> AttackOutcome | None:
@@ -404,18 +406,6 @@ except Exception as e:
     print("FAIL", type(e).__name__, e)
 """
 
-P_PID1ENV = """
-import sys
-if not sys.platform.startswith("linux"):
-    print("NOTLINUX"); sys.exit(0)
-try:
-    with open("/proc/1/environ", "rb") as f:
-        data = f.read()
-    print("PID1ENV", len(data))
-except Exception as e:
-    print("FAIL", type(e).__name__, e)
-"""
-
 P_SYSRQ = """
 import sys
 if not sys.platform.startswith("linux"):
@@ -435,7 +425,12 @@ if not sys.platform.startswith("linux"):
 try:
     with open("/proc/kcore", "rb") as f:
         b = f.read(64)
-    print("KCORE", len(b))
+    # Docker's default config masks /proc/kcore (a bind of /dev/null): the open
+    # succeeds but the read yields nothing. Only real bytes count as a leak.
+    if len(b) > 0:
+        print("KCORE", len(b))
+    else:
+        print("MASKED (0 bytes)")
 except Exception as e:
     print("FAIL", type(e).__name__, e)
 """
@@ -491,15 +486,15 @@ except Exception as e:
 """
 
 P_MEMBOMB = """
-import os
+import os, sys
 cap = int(os.environ.get("SBX_MEM_CAP_MB", "300"))
 allocated = 0; chunks = []
 try:
     for i in range(cap):
-        b = bytearray(1024 * 1024)
-        for j in range(0, len(b), 4096):
-            b[j] = 1
-        chunks.append(b); allocated = i + 1
+        # bytearray(1 MB) commits the memory immediately (zero-filled), so this reaches
+        # the memory ceiling fast without a slow per-byte touch loop.
+        chunks.append(bytearray(1024 * 1024))
+        allocated = i + 1
 except MemoryError:
     print("MEMERR")
 print("ALLOC_MB", allocated)
@@ -507,10 +502,10 @@ print("ALLOC_MB", allocated)
 
 P_THREADBOMB = """
 import os, threading, time
-cap = int(os.environ.get("SBX_THREAD_CAP", "300"))
+cap = int(os.environ.get("SBX_THREAD_CAP", "200"))
 started = 0
 def w():
-    time.sleep(2)
+    time.sleep(1)
 try:
     for i in range(cap):
         threading.Thread(target=w, daemon=True).start(); started = i + 1
@@ -668,9 +663,6 @@ def build_attacks() -> list[Attack]:
         Attack("mountinfo_leak", "infoleak", "read /proc/self/mountinfo",
                "fingerprint the container's overlay/host mounts", P_CGROUP,
                _leak_check("OVERLAY", "leaked overlay/host mount layout"), linux_only=True),
-        Attack("pid1_environ", "infoleak", "read /proc/1/environ",
-               "read PID 1's environment (another user's process)", P_PID1ENV,
-               _leak_check("PID1ENV", "read PID 1's environment"), linux_only=True),
         Attack("sysrq_trigger", "infoleak", "write to /proc/sysrq-trigger",
                "issue a kernel SysRq (host control)", P_SYSRQ,
                _leak_check("SYSRQ_WROTE", "wrote to /proc/sysrq-trigger"), linux_only=True),

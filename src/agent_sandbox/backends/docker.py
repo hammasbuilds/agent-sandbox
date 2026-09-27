@@ -23,6 +23,14 @@ from .base import read_files_out, truncate
 from .docker_cmd import build_run_argv
 
 DEFAULT_IMAGE = "python:3.12-slim"
+# Extra seconds allowed for Docker's own container start-up on top of the code's budget.
+# On a busy host a cold `docker run` can take 10s+ before the code even executes; without
+# this grace those seconds would be misread as the code timing out.
+STARTUP_GRACE_S = 40.0
+
+
+def _fmt_seconds(v: float) -> str:
+    return f"{v:.3f}".rstrip("0").rstrip(".")
 
 
 class DockerBackend:
@@ -30,20 +38,26 @@ class DockerBackend:
 
     def __init__(self, image: str = DEFAULT_IMAGE) -> None:
         self.image = image
+        self._available_cache: bool | None = None
 
     def available(self) -> bool:
-        exe = shutil.which("docker")
-        if not exe:
+        # Cache a positive result: on a busy host the daemon can be slow, and re-probing
+        # per call both costs seconds and risks a transient timeout flipping the answer.
+        if self._available_cache:
+            return True
+        if not shutil.which("docker"):
             return False
         try:
             r = subprocess.run(
-                ["docker", "info", "--format", "{{.ServerVersion}}"],
+                ["docker", "version", "--format", "{{.Server.Version}}"],
                 capture_output=True,
-                timeout=15,
+                timeout=60,
             )
         except (OSError, subprocess.TimeoutExpired):
             return False
-        return r.returncode == 0
+        ok = r.returncode == 0 and bool(r.stdout.strip())
+        self._available_cache = ok
+        return ok
 
     def run(self, spec: RunSpec, profile: Profile) -> RunResult:
         if profile.backend != "docker":
@@ -71,12 +85,18 @@ class DockerBackend:
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(content)
 
+        # The code's wall-clock budget is enforced INSIDE the container by coreutils
+        # `timeout`, so Docker's own (highly variable, seconds-long) container start-up
+        # cannot eat into it. `timeout` exits 124 when it fires. The outer process gets
+        # that budget plus a start-up grace as a safety net only.
+        wall = spec.limits.wall_seconds
         if spec.code is not None:
             (host_work / "main.py").write_bytes(spec.code.encode("utf-8"))
-            inner = ["python", "-u", "/work/main.py"]
+            payload = ["python", "-u", "/work/main.py"]
         else:
             assert spec.argv is not None
-            inner = list(spec.argv)
+            payload = list(spec.argv)
+        inner = ["timeout", _fmt_seconds(wall), *payload]
 
         argv = build_run_argv(
             image=self.image,
@@ -96,7 +116,7 @@ class DockerBackend:
                 argv,
                 input=spec.stdin.encode("utf-8"),
                 capture_output=True,
-                timeout=spec.limits.wall_seconds,
+                timeout=wall + STARTUP_GRACE_S,
             )
             exit_code: int | None = proc.returncode
             out_raw, err_raw = proc.stdout, proc.stderr
@@ -107,6 +127,9 @@ class DockerBackend:
             err_raw = e.stderr or b""
             self._kill(name)
         duration = time.monotonic() - start
+
+        if exit_code == 124:  # coreutils timeout fired: the code exceeded its budget
+            timed_out = True
 
         stdout, t1 = truncate(out_raw.decode("utf-8", "replace"), spec.limits.output_bytes)
         stderr, t2 = truncate(err_raw.decode("utf-8", "replace"), spec.limits.output_bytes)

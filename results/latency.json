@@ -1,0 +1,25 @@
+{
+  "generated_utc": "2026-09-26T19:17:54Z",
+  "n_warm": 6,
+  "profiles": [
+    {
+      "profile": "subprocess",
+      "cold_s": 2.296,
+      "warm_mean_s": 1.974,
+      "warm_median_s": 1.625,
+      "warm_min_s": 1.11,
+      "warm_max_s": 3.281,
+      "n_warm": 6,
+      "samples": [
+        2.296,
+        1.11,
+        3.281,
+        1.438,
+        1.609,
+        1.641,
+        2.765
+      ]
+    }
+  ],
+  "hardening_overhead": null
+}

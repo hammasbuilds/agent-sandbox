@@ -11,13 +11,13 @@ def _docker_available() -> bool:
         return False
     try:
         r = subprocess.run(
-            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            ["docker", "version", "--format", "{{.Server.Version}}"],
             capture_output=True,
-            timeout=15,
+            timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
-    return r.returncode == 0
+    return r.returncode == 0 and bool(r.stdout.strip())
 
 
 DOCKER_OK = _docker_available()

@@ -199,10 +199,13 @@ class ChaosRunner:
 
     def run_all(self, profiles: tuple[str, ...] = PROFILE_ORDER) -> list[Cell]:
         attacks = build_attacks()
+        # Decide Docker availability ONCE, up front. Re-checking per cell lets a busy
+        # daemon flap the answer and silently drop columns from the matrix.
+        docker_ok = self.sandbox.docker_available()
         cells: list[Cell] = []
         for attack in attacks:
             for profile in profiles:
-                if get_profile(profile).backend == "docker" and not self.sandbox.docker_available():
+                if get_profile(profile).backend == "docker" and not docker_ok:
                     continue
                 cells.append(self.run_cell(attack, profile))
         return cells
