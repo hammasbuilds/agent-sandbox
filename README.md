@@ -318,18 +318,18 @@ is pulled, from Docker Hub. **Zero runtime dependencies** — the package is pur
 ## Tests
 
 ```bash
-uv run pytest -q                   # 63 tests
+uv run pytest -q                   # 64 tests
 uv run pytest -q -m "not docker"   # unit-only: fakes, no engine, no network
 uv run pytest -q -m docker         # integration: real containers (auto-skipped if no engine)
 ```
 
-55 unit tests cover the argv builder, the profiles and limit validation (a zero timeout is
+56 unit tests cover the argv builder, the profiles and limit validation (a zero timeout is
 rejected, because `timeout 0` would mean *no* timeout), workdir-escaping file paths, every
 harness-side check with fabricated `RunResult`s, the subprocess backend, the file-out guard, the
 latency design (interleaving; a fake with drifting load checks that pairing recovers the true
 difference) and the CLI's error messages. The 8 Docker-marked tests run real containers,
 including the Linux file-out guard check, and are skipped automatically when no engine is
-present (verified by re-running with `docker` removed from `PATH`: 55 passed, 8 skipped).
+present (verified by re-running with `docker` removed from `PATH`: 56 passed, 8 skipped).
 Tests are hermetic: no network (the beacon test is loopback-only), no model, no reliance on data
 that grows.
 
