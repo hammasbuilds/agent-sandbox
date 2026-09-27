@@ -1,0 +1,94 @@
+{
+  "generated_utc": "2026-09-27T04:35:28Z",
+  "rounds": 15,
+  "median_s": {
+    "default": 5.172,
+    "default-nonet": 3.812,
+    "hardened": 4.875
+  },
+  "paired": {
+    "default_minus_default-nonet (network setup)": {
+      "median_s": 1.046,
+      "ci95_s": [
+        0.968,
+        1.922
+      ],
+      "first_slower_in_rounds": 13,
+      "rounds": 15
+    },
+    "hardened_minus_default-nonet (remaining hardening flags)": {
+      "median_s": 1.046,
+      "ci95_s": [
+        0.109,
+        1.797
+      ],
+      "first_slower_in_rounds": 11,
+      "rounds": 15
+    },
+    "hardened_minus_default (total)": {
+      "median_s": -0.578,
+      "ci95_s": [
+        -1.39,
+        0.751
+      ],
+      "first_slower_in_rounds": 7,
+      "rounds": 15
+    }
+  },
+  "samples_s": {
+    "default": [
+      3.875,
+      6.328,
+      4.922,
+      5.015,
+      5.172,
+      3.282,
+      4.063,
+      5.062,
+      4.546,
+      4.219,
+      5.609,
+      5.453,
+      5.469,
+      5.375,
+      6.281,
+      7.14
+    ],
+    "default-nonet": [
+      2.531,
+      3.406,
+      3.812,
+      3.5,
+      3.25,
+      2.578,
+      5.562,
+      4.079,
+      2.219,
+      2.062,
+      4.609,
+      6.5,
+      3.328,
+      4.531,
+      5.313,
+      6.094
+    ],
+    "hardened": [
+      5.938,
+      4.813,
+      5.11,
+      3.625,
+      4.156,
+      2.468,
+      5.063,
+      5.125,
+      2.328,
+      3.438,
+      3.36,
+      4.875,
+      7.609,
+      6.344,
+      12.891,
+      7.891
+    ]
+  }
+}

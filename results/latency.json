@@ -1,65 +1,88 @@
 {
-  "generated_utc": "2026-09-27T01:13:11Z",
-  "n_warm": 6,
-  "profiles": [
-    {
-      "profile": "subprocess",
-      "cold_s": 3.031,
-      "warm_mean_s": 2.013,
-      "warm_median_s": 1.781,
-      "warm_min_s": 1.25,
-      "warm_max_s": 3.141,
-      "n_warm": 6,
-      "samples": [
-        3.031,
-        1.25,
-        1.39,
-        3.141,
-        1.984,
-        2.735,
-        1.578
+  "generated_utc": "2026-09-27T01:35:21Z",
+  "design": "interleaved round-robin; round 0 excluded; paired per-round differences",
+  "rounds": 10,
+  "profiles": {
+    "subprocess": {
+      "first_run_s": 0.141,
+      "median_s": 0.14,
+      "min_s": 0.109,
+      "max_s": 0.156,
+      "n": 10,
+      "samples_s": [
+        0.141,
+        0.14,
+        0.156,
+        0.109,
+        0.14,
+        0.109,
+        0.141,
+        0.156,
+        0.109,
+        0.141,
+        0.11
       ]
     },
-    {
-      "profile": "default",
-      "cold_s": 22.109,
-      "warm_mean_s": 18.0833,
-      "warm_median_s": 17.6485,
-      "warm_min_s": 5.843,
-      "warm_max_s": 29.953,
-      "n_warm": 6,
-      "samples": [
-        22.109,
-        26.5,
-        29.953,
-        14.125,
-        21.172,
-        10.907,
-        5.843
+    "default": {
+      "first_run_s": 1.297,
+      "median_s": 1.039,
+      "min_s": 0.843,
+      "max_s": 1.391,
+      "n": 10,
+      "samples_s": [
+        1.297,
+        1.313,
+        1.391,
+        1.125,
+        1.266,
+        1.0,
+        1.078,
+        0.985,
+        0.969,
+        0.906,
+        0.843
       ]
     },
-    {
-      "profile": "hardened",
-      "cold_s": 11.938,
-      "warm_mean_s": 14.1953,
-      "warm_median_s": 11.0235,
-      "warm_min_s": 8.375,
-      "warm_max_s": 25.781,
-      "n_warm": 6,
-      "samples": [
-        11.938,
-        12.75,
-        25.781,
-        19.984,
-        8.985,
-        9.297,
-        8.375
+    "hardened": {
+      "first_run_s": 1.016,
+      "median_s": 0.812,
+      "min_s": 0.688,
+      "max_s": 1.156,
+      "n": 10,
+      "samples_s": [
+        1.016,
+        1.156,
+        0.781,
+        1.032,
+        0.953,
+        0.813,
+        0.734,
+        1.0,
+        0.812,
+        0.703,
+        0.688
       ]
     }
-  ],
+  },
   "hardening_overhead": {
-    "cold_delta_s": -10.171,
-    "warm_delta_s": -3.888,
-    "warm_ratio": 0.785
+    "paired_diff_median_s": -0.172,
+    "paired_diff_ci95_s": [
+      -0.313,
+      -0.125
+    ],
+    "hardened_slower_in_rounds": 1,
+    "rounds": 10,
+    "paired_diffs_s": [
+      -0.157,
+      -0.61,
+      -0.093,
+      -0.313,
+      -0.187,
+      -0.344,
+      0.015,
+      -0.157,
+      -0.203,
+      -0.155
+    ]
   }
 }

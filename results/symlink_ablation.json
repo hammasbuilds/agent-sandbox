@@ -1,0 +1,59 @@
+{
+  "generated_utc": "2026-09-27T04:40:16Z",
+  "windows_host_runs": [
+    {
+      "reader": "guarded",
+      "profile": "subprocess",
+      "link_created": false,
+      "payload_said": "FAIL OSError [WinError 1314] A required privilege is not held by the client: '../agsbx-chaos-yg7c_vb8/canary-4d37c074f87",
+      "verdict": "blocked",
+      "evidence": "harness refused to follow the symlink out of the workdir"
+    },
+    {
+      "reader": "guarded",
+      "profile": "default",
+      "link_created": true,
+      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-47cccdc57c1e4704b7514ffa2cddd8d6.txt",
+      "verdict": "blocked",
+      "evidence": "harness refused to follow the symlink out of the workdir"
+    },
+    {
+      "reader": "guarded",
+      "profile": "hardened",
+      "link_created": true,
+      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-4fce3d89b1454cf9b5fef1d41193e682.txt",
+      "verdict": "blocked",
+      "evidence": "harness refused to follow the symlink out of the workdir"
+    },
+    {
+      "reader": "naive",
+      "profile": "subprocess",
+      "link_created": false,
+      "payload_said": "FAIL OSError [WinError 1314] A required privilege is not held by the client: '../agsbx-chaos-yg7c_vb8/canary-8953ec1fb3e",
+      "verdict": "blocked",
+      "evidence": "harness refused to follow the symlink out of the workdir"
+    },
+    {
+      "reader": "naive",
+      "profile": "default",
+      "link_created": true,
+      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-b4050da41a574859880e4b1816229661.txt",
+      "verdict": "blocked",
+      "evidence": "harness refused to follow the symlink out of the workdir"
+    },
+    {
+      "reader": "naive",
+      "profile": "hardened",
+      "link_created": true,
+      "payload_said": "LINKED ../agsbx-chaos-yg7c_vb8/canary-fb84a57a3308487bba2615167a90469b.txt",
+      "verdict": "blocked",
+      "evidence": "harness refused to follow the symlink out of the workdir"
+    }
+  ],
+  "linux_host_simulation": {
+    "naive_read": "LINUXCANARY-7f3a",
+    "guarded_read": {},
+    "naive_leaked_canary": true,
+    "guard_leaked_canary": false
+  }
+}

@@ -94,6 +94,10 @@ class ChaosRunner:
         if attack.needs_canary:
             Path(canary_path).write_text(canary_token, encoding="utf-8")
             env["SBX_CANARY_PATH"] = canary_path
+            # Both the backend's workdir and this scratch dir are created in the system
+            # temp dir, so from the workdir the canary is reachable as ../<scratch>/<file>.
+            if self.scratch.parent.resolve() == Path(tempfile.gettempdir()).resolve():
+                env["SBX_CANARY_REL"] = f"../{self.scratch.name}/{Path(canary_path).name}"
         if attack.name == "disk_fill":
             env["SBX_DISK_DIR"] = str(self.scratch) if backend == "subprocess" else "/var/tmp"
         if attack.name == "orphan_survivor":

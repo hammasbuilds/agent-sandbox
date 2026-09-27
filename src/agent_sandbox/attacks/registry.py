@@ -604,7 +604,9 @@ print("WROTE_MB", written)
 
 P_SYMLINK = """
 import os
-target = os.environ["SBX_CANARY_PATH"]
+# A relative target climbs out of the workdir; it resolves on the HOST side of the bind
+# mount, where the harness reads file-out -- the realistic shape of this attack.
+target = os.environ.get("SBX_CANARY_REL") or os.environ["SBX_CANARY_PATH"]
 try:
     if os.path.lexists("out.txt"):
         os.remove("out.txt")
