@@ -33,6 +33,13 @@ def _add_run(sub: argparse._SubParsersAction) -> None:
     )
     p.add_argument("--env", action="append", default=[], metavar="K=V", help="env var (repeatable)")
     p.add_argument(
+        "--file-in",
+        action="append",
+        default=[],
+        metavar="LOCAL[:REL]",
+        help="copy a local file into the workdir, optionally renamed to REL (repeatable)",
+    )
+    p.add_argument(
         "--file-out",
         action="append",
         default=[],
@@ -50,6 +57,24 @@ def _parse_env(pairs: list[str]) -> dict[str, str]:
         k, v = item.split("=", 1)
         env[k] = v
     return env
+
+
+def _parse_files_in(items: list[str]) -> dict[str, bytes]:
+    files: dict[str, bytes] = {}
+    for item in items:
+        # Split on the LAST ':' that is not a Windows drive colon (C:\...).
+        local, rel = item, None
+        idx = item.rfind(":")
+        if idx > 1:
+            local, rel = item[:idx], item[idx + 1 :]
+        path = Path(local)
+        if not path.is_file():
+            raise SystemExit(f"--file-in: no such file: {local}")
+        name = rel or path.name
+        if Path(name).is_absolute() or ".." in Path(name).parts:
+            raise SystemExit(f"--file-in: destination must stay inside the workdir: {name}")
+        files[name] = path.read_bytes()
+    return files
 
 
 def _emit(result: RunResult, as_json: bool) -> int:
@@ -97,7 +122,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     limits = limits_for(args.profile)
     if args.timeout is not None:
-        limits = limits.with_(wall_seconds=args.timeout)
+        try:
+            limits = limits.with_(wall_seconds=args.timeout)
+        except ValueError as e:
+            raise SystemExit(f"bad --timeout: {e}") from None
 
     sandbox = Sandbox()
     result = sandbox.run(
@@ -105,6 +133,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         profile=args.profile,
         stdin=stdin,
         env=_parse_env(args.env),
+        files_in=_parse_files_in(args.file_in),
         files_out=tuple(args.file_out),
         limits=limits,
     )
