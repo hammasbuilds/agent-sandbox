@@ -568,6 +568,9 @@ if os.name == "nt":
     kw["creationflags"] = 0x00000008  # DETACHED_PROCESS
 else:
     kw["start_new_session"] = True
+# The child runs from the marker's directory, not the workdir: its goal is to outlive the
+# run, not to pin the workdir (which would only block the harness's clean-up).
+kw["cwd"] = os.path.dirname(os.path.abspath(marker)) or "."
 p = subprocess.Popen([sys.executable, "-c", child], **kw)
 print("ORPHAN_PID", p.pid)
 print("SPAWNED", marker)
@@ -703,8 +706,7 @@ def build_attacks() -> list[Attack]:
                "detonate a delayed payload after the timeout", P_TIMEBOMB, chk_time_bomb,
                files_out=("detonated.txt",), wall_override=4.0),
         Attack("orphan_survivor", "process", "spawn a detached child that outlives the parent",
-               "leave a process running after the run returns", P_ORPHAN, chk_orphan,
-               files_out=("orphan.txt",)),
-        Attack("output_flood", "resource", "write ~200 MB to stdout",
+               "leave a process running after the run returns", P_ORPHAN, chk_orphan),
+        Attack("output_flood", "resource", "write ~50 MB to stdout",
                "flood the harness's captured output", P_OUTPUTFLOOD, chk_output_flood),
     ]

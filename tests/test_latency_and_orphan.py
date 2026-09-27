@@ -60,6 +60,19 @@ def test_container_name_extracted_from_argv():
     assert _container_name(("docker", "run")) is None
 
 
+def test_runner_removes_only_its_own_scratch(tmp_path):
+    from agent_sandbox.chaos import ChaosRunner
+
+    with ChaosRunner(FakeSandbox(), reps=1) as owned:
+        mine = owned.scratch
+        assert mine.is_dir()
+    assert not mine.exists()
+
+    given = tmp_path / "keep"
+    ChaosRunner(FakeSandbox(), reps=1, scratch=given).close()
+    assert given.is_dir()  # a caller-provided directory is never deleted
+
+
 def test_verdict_any_breach_wins():
     assert _verdict({"succeeded": 1, "blocked": 2, "n/a": 0, "error": 0}, 3) == "succeeded"
     assert _verdict({"succeeded": 0, "blocked": 3, "n/a": 0, "error": 0}, 3) == "blocked"

@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import secrets
+import shutil
 import subprocess
 import tempfile
 import time
@@ -71,12 +72,21 @@ class ChaosRunner:
     def __init__(self, sandbox: Sandbox, reps: int = 3, scratch: Path | None = None) -> None:
         self.sandbox = sandbox
         self.reps = reps
+        self._owns_scratch = scratch is None
         self.scratch = scratch or Path(tempfile.mkdtemp(prefix="agsbx-chaos-"))
         self.scratch.mkdir(parents=True, exist_ok=True)
         self.beacon = HostBeacon().start()
 
     def close(self) -> None:
         self.beacon.stop()
+        if self._owns_scratch:
+            shutil.rmtree(self.scratch, ignore_errors=True)
+
+    def __enter__(self) -> ChaosRunner:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     # -- context / env wiring -------------------------------------------------
 

@@ -166,7 +166,7 @@ def _cmd_chaos(args: argparse.Namespace) -> int:
         cells = runner.run_all(profiles) if profiles else runner.run_all()
     finally:
         runner.close()
-    report = build_report(cells, sandbox, args.reps, sandbox._docker.image)
+    report = build_report(cells, sandbox, args.reps, sandbox.image)
     out = Path(args.out)
     write_report(report, out)
     b = report["summary"]["breaches"]

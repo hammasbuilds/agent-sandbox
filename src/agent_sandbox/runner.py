@@ -52,6 +52,10 @@ class Sandbox:
         self._docker = DockerBackend(image=image)
         self._subprocess = SubprocessBackend()
 
+    @property
+    def image(self) -> str:
+        return self._docker.image
+
     def docker_available(self) -> bool:
         return self._docker.available()
 
