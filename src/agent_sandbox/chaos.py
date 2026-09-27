@@ -28,6 +28,7 @@ from .runner import Sandbox, limits_for
 from .types import RunResult, RunSpec
 
 PROFILE_ORDER = ("subprocess", "default", "hardened")
+ORPHAN_WATCH_S = 10.0
 
 
 @dataclass
@@ -96,7 +97,13 @@ class ChaosRunner:
         if attack.name == "disk_fill":
             env["SBX_DISK_DIR"] = str(self.scratch) if backend == "subprocess" else "/var/tmp"
         if attack.name == "orphan_survivor":
-            env["SBX_ORPHAN_MARKER"] = str(self.scratch / f"orphan-{nonce}.txt")
+            # Host path for subprocess; a writable in-container path for Docker, so the
+            # child genuinely lives and only the sandbox's teardown can stop it.
+            env["SBX_ORPHAN_MARKER"] = (
+                str(self.scratch / f"orphan-{nonce}.txt")
+                if backend == "subprocess"
+                else "/tmp/agsbx-orphan.txt"
+            )
 
         ctx = ChaosContext(
             nonce=nonce,
@@ -142,43 +149,53 @@ class ChaosRunner:
         return outcome, result
 
     def _resolve_orphan(self, ctx: ChaosContext, env: dict, result: RunResult) -> AttackOutcome:
-        marker = Path(env["SBX_ORPHAN_MARKER"])
-        # Give a would-be orphan a moment, then see if the marker is still advancing.
-        before = marker.stat().st_mtime if marker.exists() else None
-        time.sleep(1.5)
-        after = marker.stat().st_mtime if marker.exists() else None
-        survived = after is not None and (before is None or after > before)
+        if ctx.backend == "docker":
+            return _docker_orphan_check(result)
 
-        # Clean up: kill only the exact child pid the attack printed (subprocess only).
-        if ctx.backend == "subprocess":
-            m = re.search(r"ORPHAN_PID\s+(\d+)", result.stdout)
-            if m:
-                _kill_pid(int(m.group(1)))
-        try:
-            if marker.exists():
-                marker.unlink()
-        except OSError:
-            pass
+        # Subprocess: the detached child rewrites a host marker every 0.2s. On a loaded
+        # host it can take seconds just to start, so poll (up to ORPHAN_WATCH_S) for the
+        # marker's content to change AFTER run() returned -- two distinct observations
+        # prove a live process outlived the run.
+        marker = Path(env["SBX_ORPHAN_MARKER"])
+        seen: set[str] = set()
+        deadline = time.monotonic() + ORPHAN_WATCH_S
+        while time.monotonic() < deadline and len(seen) < 2:
+            with suppress(OSError):
+                seen.add(marker.read_text(encoding="utf-8"))
+            time.sleep(0.25)
+        survived = len(seen) >= 2
+
+        # Clean up: kill only the exact child pid the attack printed.
+        m = re.search(r"ORPHAN_PID\s+(\d+)", result.stdout)
+        if m:
+            _kill_pid(int(m.group(1)))
+        with suppress(OSError):
+            marker.unlink()
 
         if survived:
-            return AttackOutcome(SUCCEEDED, "a detached child kept running after the run returned")
-        return AttackOutcome(BLOCKED, "no process survived the run")
+            return AttackOutcome(
+                SUCCEEDED, "a detached child kept rewriting its marker after the run returned"
+            )
+        return AttackOutcome(BLOCKED, f"no live process seen within {ORPHAN_WATCH_S:.0f}s")
 
     # -- aggregation ----------------------------------------------------------
 
     def run_cell(self, attack: Attack, profile: str) -> Cell:
         counts = {SUCCEEDED: 0, BLOCKED: 0, NA: 0, ERROR: 0}
-        evidence = ""
+        success_ev = ""
+        any_ev = ""
         durations: list[float] = []
         for _ in range(self.reps):
             outcome, result = self._run_once(attack, profile)
             counts[outcome.status] = counts.get(outcome.status, 0) + 1
             durations.append(result.duration_s)
-            if outcome.status == SUCCEEDED and not evidence:
-                evidence = outcome.evidence
-            if not evidence:
-                evidence = outcome.evidence
+            if outcome.status == SUCCEEDED and not success_ev:
+                success_ev = outcome.evidence
+            if not any_ev:
+                any_ev = outcome.evidence
 
+        # Show evidence that matches the verdict: a breach message when any rep breached.
+        evidence = success_ev or any_ev
         verdict = _verdict(counts, self.reps)
         mean = sum(durations) / len(durations) if durations else 0.0
         return Cell(
@@ -209,6 +226,42 @@ class ChaosRunner:
                     continue
                 cells.append(self.run_cell(attack, profile))
         return cells
+
+
+def _container_name(argv: tuple[str, ...]) -> str | None:
+    for i, tok in enumerate(argv[:-1]):
+        if tok == "--name":
+            return argv[i + 1]
+    return None
+
+
+def _docker_orphan_check(result: RunResult) -> AttackOutcome:
+    """Host-side check: is the run's container (and so anything inside it) still alive
+    after run() returned? When PID 1 exits, the kernel kills every process in the
+    container's PID namespace, so a detached child cannot outlive it."""
+    name = _container_name(result.argv)
+    if name is None:
+        return AttackOutcome(ERROR, "could not identify the run's container")
+    alive = False
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        r = subprocess.run(
+            ["docker", "ps", "-q", "--filter", f"name=^{name}$"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        alive = bool(r.stdout.strip())
+        if alive:
+            break
+        time.sleep(0.5)
+    if alive:
+        return AttackOutcome(SUCCEEDED, f"container {name} still running after the run returned")
+    if "ORPHAN_PID" not in result.stdout:
+        return AttackOutcome(ERROR, "payload never spawned its child")
+    return AttackOutcome(
+        BLOCKED, "child was spawned, but the container (its PID namespace) was gone on return"
+    )
 
 
 def _verdict(counts: dict[str, int], reps: int) -> str:

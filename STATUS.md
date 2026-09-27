@@ -15,7 +15,7 @@ uv run python demo.py            # known-answer demo (sum=15) + 4 attacks x 2 pr
 bash scripts/run_chaos.sh        # writes results/chaos.json + results/latency.json (needs Docker)
 # or directly:
 uv run agent-sandbox chaos --reps 3 --out results/chaos.json
-uv run agent-sandbox latency --warm 6 --out results/latency.json
+uv run agent-sandbox latency --rounds 10 --out results/latency.json
 ```
 
 ## Self-score (honest, against the brief rubric)
@@ -35,7 +35,7 @@ uv run agent-sandbox latency --warm 6 --out results/latency.json
 - Python API (`Sandbox.run`) + CLI with three profiles: `subprocess`, `default`, `hardened`.
 - Two backends: Docker (labelled containers, `--rm`, kill-by-name) and subprocess (unsafe baseline).
 - Pure `docker run` argv builder, unit-tested without an engine.
-- 31-attack chaos/escape suite with harness-side objective success checks.
+- 30-attack chaos/escape suite with harness-side objective success checks.
 - Host beacon (TCP+UDP) proving real egress; planted env secret and host canary; symlink and
   timeout defences; bounded resource bombs.
 - Latency benchmark (cold vs warm, hardening overhead).

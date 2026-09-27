@@ -26,7 +26,7 @@ flowchart TD
     A["AI-generated code"] --> B["subprocess<br/>(unsafe baseline)"]
     A --> C["default<br/>plain docker run"]
     A --> D["hardened<br/>net off · ro rootfs · non-root<br/>cap-drop · no-new-privs · limits"]
-    B --> E["31 attacks<br/>harness-scored"]
+    B --> E["30 attacks<br/>harness-scored"]
     C --> E
     D --> E
     E --> F["which attack succeeds<br/>under which profile,<br/>with the mechanism"]
@@ -35,7 +35,7 @@ flowchart TD
     style F fill:#16a34a,color:#fff
 ```
 
-The suite runs 31 real attack programs — network egress, secret exfiltration, host-path reads,
+The suite runs 30 real attack programs — network egress, secret exfiltration, host-path reads,
 fork/memory/disk bombs, `/proc` and `/sys` leaks, privilege and capability probes, raw sockets,
 time bombs past the timeout, orphan processes, container-to-host surfaces, symlink tricks on
 file-out — under three profiles, several repetitions each. **The harness, not the attacker,
@@ -74,7 +74,7 @@ uv run agent-sandbox profiles
 
 # reproduce the finding
 uv run agent-sandbox chaos --reps 3 --out results/chaos.json
-uv run agent-sandbox latency --warm 6 --out results/latency.json
+uv run agent-sandbox latency --rounds 10 --out results/latency.json
 ```
 
 The Python API mirrors the CLI:
@@ -104,7 +104,7 @@ src/agent_sandbox/
     base.py              output truncation + symlink-safe file-out reader
   attacks/
     harness.py           HostBeacon (TCP+UDP), ChaosContext, AttackOutcome
-    registry.py          31 attacks: payload + harness-side objective check
+    registry.py          30 attacks: payload + harness-side objective check
   chaos.py               run every attack x every profile x N reps, score, report
 demo.py                  known-answer demo
 scripts/run_chaos.sh     full suite + latency + cleanup

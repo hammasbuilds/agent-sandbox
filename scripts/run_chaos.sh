@@ -12,7 +12,7 @@ echo ">> chaos suite (reps=$REPS)"
 uv run agent-sandbox chaos --reps "$REPS" --out results/chaos.json
 
 echo ">> latency benchmark"
-uv run agent-sandbox latency --warm 8 --out results/latency.json
+uv run agent-sandbox latency --rounds 10 --out results/latency.json
 
 echo ">> cleanup"
 uv run agent-sandbox cleanup

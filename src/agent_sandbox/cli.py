@@ -153,12 +153,20 @@ def _cmd_latency(args: argparse.Namespace) -> int:
     from .latency import build_latency_report, write_latency_report
 
     sandbox = Sandbox()
-    report = build_latency_report(sandbox, n_warm=args.warm)
+    report = build_latency_report(sandbox, rounds=args.rounds)
     out = Path(args.out)
     write_latency_report(report, out)
     print(f"wrote {out}")
-    for s in report["profiles"]:
-        print(f"  {s['profile']:11s} cold={s['cold_s']}s warm_mean={s['warm_mean_s']}s")
+    for name, s in report["profiles"].items():
+        print(f"  {name:11s} first={s['first_run_s']}s median={s['median_s']}s min={s['min_s']}s")
+    ov = report["hardening_overhead"]
+    if ov:
+        lo, hi = ov["paired_diff_ci95_s"]
+        print(
+            f"  hardened - default (paired median) = {ov['paired_diff_median_s']}s "
+            f"[95% CI {lo}, {hi}]; hardened slower in {ov['hardened_slower_in_rounds']}"
+            f"/{ov['rounds']} rounds"
+        )
     return 0
 
 
@@ -189,8 +197,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="subset of profiles to test (default: all)",
     )
 
-    latency = sub.add_parser("latency", help="measure cold/warm latency per profile")
-    latency.add_argument("--warm", type=int, default=8, help="warm samples per profile")
+    latency = sub.add_parser(
+        "latency", help="measure per-profile latency, interleaved to cancel host-load drift"
+    )
+    latency.add_argument("--rounds", type=int, default=10, help="interleaved rounds")
     latency.add_argument("--out", default="results/latency.json", help="output JSON path")
 
     sub.add_parser("cleanup", help="remove leftover agent-sandbox containers")

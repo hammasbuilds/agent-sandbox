@@ -1,17 +1,22 @@
-"""Measure the latency cost of hardening.
+"""Measure the latency cost of hardening, controlled for host-load drift.
 
-Cold start = first container of a profile after nothing is warm (image just resolved,
-no cached container state). Warm run = subsequent runs. We report both for the default
-and hardened Docker profiles and for the subprocess baseline, so the overhead of adding
-the hardening flags is a number, not a guess.
+Profiles are measured *interleaved*, round-robin (subprocess, default, hardened, then
+again), rather than one block after another. On a shared host the background load drifts
+by tens of seconds over a benchmark; measuring profiles in sequence would attribute that
+drift to whichever profile happened to run during the busy stretch. Interleaving puts every
+profile under the same load in each round, and the per-round *paired* difference
+(hardened minus default) cancels most of it.
+
+Round 0 is reported as "first run" rather than a true cold start: both Docker profiles
+share one image, so only the very first container in the process is genuinely cold.
 """
 
 from __future__ import annotations
 
 import json
+import random
 import statistics
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 from .runner import Sandbox
@@ -19,69 +24,66 @@ from .runner import Sandbox
 TRIVIAL = "print('ok')"
 
 
-@dataclass
-class LatencyStat:
-    profile: str
-    cold_s: float
-    warm_mean_s: float
-    warm_median_s: float
-    warm_min_s: float
-    warm_max_s: float
-    n_warm: int
-    samples: list[float]
-
-    def as_dict(self) -> dict:
-        d = self.__dict__.copy()
-        d["samples"] = [round(x, 4) for x in self.samples]
-        for k in ("cold_s", "warm_mean_s", "warm_median_s", "warm_min_s", "warm_max_s"):
-            d[k] = round(d[k], 4)
-        return d
+def _one(sandbox: Sandbox, profile: str) -> float:
+    t = time.monotonic()
+    r = sandbox.run(code=TRIVIAL, profile=profile)
+    dt = time.monotonic() - t
+    if r.error:
+        raise RuntimeError(f"profile {profile} unavailable: {r.error}")
+    if r.stdout.strip() != "ok":
+        raise RuntimeError(f"profile {profile} produced unexpected output: {r.stdout!r}")
+    return dt
 
 
-def measure_profile(sandbox: Sandbox, profile: str, n_warm: int = 8) -> LatencyStat:
-    samples: list[float] = []
-    for _ in range(n_warm + 1):
-        t = time.monotonic()
-        r = sandbox.run(code=TRIVIAL, profile=profile)
-        dt = time.monotonic() - t
-        if r.error:
-            raise RuntimeError(f"profile {profile} unavailable: {r.error}")
-        samples.append(dt)
-    cold = samples[0]
-    warm = samples[1:]
-    return LatencyStat(
-        profile=profile,
-        cold_s=cold,
-        warm_mean_s=statistics.mean(warm),
-        warm_median_s=statistics.median(warm),
-        warm_min_s=min(warm),
-        warm_max_s=max(warm),
-        n_warm=len(warm),
-        samples=samples,
+def _bootstrap_ci(values: list[float], iters: int = 5000, seed: int = 0) -> tuple[float, float]:
+    """95% percentile-bootstrap CI of the median."""
+    rng = random.Random(seed)
+    meds = sorted(
+        statistics.median(rng.choices(values, k=len(values))) for _ in range(iters)
     )
+    return meds[int(0.025 * iters)], meds[int(0.975 * iters) - 1]
 
 
-def build_latency_report(sandbox: Sandbox, n_warm: int = 8) -> dict:
+def _summ(samples: list[float]) -> dict:
+    return {
+        "first_run_s": round(samples[0], 3),
+        "median_s": round(statistics.median(samples[1:]), 3),
+        "min_s": round(min(samples[1:]), 3),
+        "max_s": round(max(samples[1:]), 3),
+        "n": len(samples) - 1,
+        "samples_s": [round(x, 3) for x in samples],
+    }
+
+
+def build_latency_report(sandbox: Sandbox, rounds: int = 10) -> dict:
     profiles = ["subprocess"]
     if sandbox.docker_available():
         profiles += ["default", "hardened"]
-    stats = [measure_profile(sandbox, p, n_warm=n_warm) for p in profiles]
-    by = {s.profile: s for s in stats}
-    overhead = None
-    if "default" in by and "hardened" in by:
-        overhead = {
-            "cold_delta_s": round(by["hardened"].cold_s - by["default"].cold_s, 4),
-            "warm_delta_s": round(by["hardened"].warm_mean_s - by["default"].warm_mean_s, 4),
-            "warm_ratio": round(by["hardened"].warm_mean_s / by["default"].warm_mean_s, 3)
-            if by["default"].warm_mean_s
-            else None,
-        }
-    return {
+
+    samples: dict[str, list[float]] = {p: [] for p in profiles}
+    for _ in range(rounds + 1):  # round 0 = first run, excluded from the stats
+        for p in profiles:
+            samples[p].append(_one(sandbox, p))
+
+    report: dict = {
         "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "n_warm": n_warm,
-        "profiles": [s.as_dict() for s in stats],
-        "hardening_overhead": overhead,
+        "design": "interleaved round-robin; round 0 excluded; paired per-round differences",
+        "rounds": rounds,
+        "profiles": {p: _summ(s) for p, s in samples.items()},
+        "hardening_overhead": None,
     }
+    if "default" in samples:
+        pairs = zip(samples["hardened"][1:], samples["default"][1:], strict=True)
+        diffs = [h - d for h, d in pairs]
+        lo, hi = _bootstrap_ci(diffs)
+        report["hardening_overhead"] = {
+            "paired_diff_median_s": round(statistics.median(diffs), 3),
+            "paired_diff_ci95_s": [round(lo, 3), round(hi, 3)],
+            "hardened_slower_in_rounds": sum(1 for x in diffs if x > 0),
+            "rounds": len(diffs),
+            "paired_diffs_s": [round(x, 3) for x in diffs],
+        }
+    return report
 
 
 def write_latency_report(report: dict, path: Path) -> None:

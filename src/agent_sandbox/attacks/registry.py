@@ -24,6 +24,11 @@ from .harness import BLOCKED, ERROR, NA, SUCCEEDED, AttackOutcome, ChaosContext
 
 Check = Callable[[RunResult, ChaosContext], AttackOutcome]
 
+# A resource bomb must be stopped by the resource limit it targets, never by the wall
+# clock -- otherwise a slow, loaded host turns "the limit held" into "it ran out of time".
+# The bombs are self-bounded, so a generous budget cannot hurt the host.
+BOMB_WALL_S = 30.0
+
 
 @dataclass(frozen=True)
 class Attack:
@@ -634,7 +639,7 @@ def build_attacks() -> list[Attack]:
                "read the shadow password file (root-only)", P_SHADOW, chk_shadow, linux_only=True),
         Attack("disk_fill", "resource", "write a large file until the filesystem stops it",
                "fill disk past the hardened cap", P_DISK,
-               _bomb_check("WROTE_MB", 24, "disk fill")),
+               _bomb_check("WROTE_MB", 24, "disk fill"), wall_override=BOMB_WALL_S),
         Attack("symlink_fileout", "data", "plant a symlink at a file-out path off the workdir",
                "make file-out return a host file's contents", P_SYMLINK, chk_symlink,
                files_out=("out.txt",), needs_canary=True),
@@ -682,13 +687,13 @@ def build_attacks() -> list[Attack]:
         # ---- resource exhaustion (bounded)
         Attack("memory_bomb", "resource", "allocate and touch memory in 1 MB chunks (bounded)",
                "allocate past the hardened memory cap", P_MEMBOMB,
-               _bomb_check("ALLOC_MB", 200, "memory")),
+               _bomb_check("ALLOC_MB", 200, "memory"), wall_override=BOMB_WALL_S),
         Attack("thread_bomb", "resource", "spawn threads until refused (bounded)",
                "spawn past the hardened pids limit", P_THREADBOMB,
-               _bomb_check("THREADS", 128, "threads")),
+               _bomb_check("THREADS", 128, "threads"), wall_override=BOMB_WALL_S),
         Attack("fork_bomb", "resource", "fork() children until refused (bounded, non-exponential)",
                "fork past the hardened pids limit", P_FORKBOMB,
-               _bomb_check("FORKED", 128, "forks"), linux_only=True),
+               _bomb_check("FORKED", 128, "forks"), linux_only=True, wall_override=BOMB_WALL_S),
         Attack("cpu_spin", "resource", "busy-loop forever",
                "run past the wall-clock timeout", P_CPUSPIN, chk_timeout_enforced,
                wall_override=4.0),
