@@ -4,6 +4,7 @@
 <p align="center">
   <a href="#the-through-line">The through-line</a> &middot;
   <a href="#findings">Findings</a> &middot;
+  <a href="#profiles">Profiles</a> &middot;
   <a href="#input--output">Input / Output</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
   <a href="#what-this-does-not-do">What it does NOT do</a> &middot;
@@ -24,8 +25,8 @@
 ```mermaid
 flowchart TD
     A["AI-generated code"] --> B["subprocess<br/>(unsafe baseline)"]
-    A --> C["default<br/>plain docker run"]
-    A --> D["hardened<br/>net off · ro rootfs · non-root<br/>cap-drop · no-new-privs · limits"]
+    A --> C["docker-baseline<br/>Docker defaults + safety limits"]
+    A --> D["hardened<br/>net off · ro rootfs · non-root · cap-drop<br/>no-new-privs · tmpfs workspace · limits"]
     B --> E["30 attacks<br/>harness-scored"]
     C --> E
     D --> E
@@ -42,6 +43,15 @@ file-out — under three profiles, several repetitions each. **The harness, not 
 decides whether each attack succeeded**, from evidence it can see for itself: a connection that
 actually arrived at a host listener, a canary token it planted and then found in captured
 output, a marker file that kept changing after the run returned.
+
+> [!IMPORTANT]
+> **Containment results are from the pre-fix run (commit 4f723dd) and are pending a rerun
+> and a scoring review.** They were produced before the runtime fixes listed in
+> [STATUS.md](STATUS.md) (kill-after on the timeout, streamed output cap, tmpfs workspace,
+> OOM read from Docker's state, beacon bound to loopback). In the containment claim and
+> tables below, `default` is the profile now named `docker-baseline`: it was never a plain
+> `docker run`, because it carried the host-safety limits described under
+> [Profiles](#profiles). The latency section *has* been rerun on the fixed runtime.
 
 > **"Docker by itself is a sandbox" is half true. Plain `docker run` did stop every host-level
 > attack — the host's env secret, a host file, an orphan process outliving the run. But
@@ -61,6 +71,10 @@ runs, `python:3.12-slim`. Every one of the 90 cells gave the same verdict in all
 repetitions, and none errored.
 
 ## Findings
+
+> [!IMPORTANT]
+> Containment results are from the pre-fix run (commit 4f723dd) and are pending a rerun and
+> a scoring review (see the note [above](#the-through-line)).
 
 ### The full matrix
 
@@ -166,6 +180,40 @@ running other people's training jobs throughout. Profiles were interleaved round
 that load hit every profile equally, and the paired difference is the number to trust, not
 the raw medians.
 
+## Profiles
+
+| profile | backend | isolation | limits enforced (from `agent-sandbox profiles` on this Windows host) |
+|---|---|---|---|
+| `subprocess` | host child process | **none**: sees your files, env and network | wall 10 s, output 1 MB per stream. Memory/fsize/nofile rlimits apply on POSIX only; pids and cpus never |
+| `docker-baseline` | Docker | Docker's defaults: bridge network, root, writable rootfs, default caps + seccomp | wall 10 s, output 1 MB, memory 512 MB with swap disabled, cpus 2, pids 512, nofile 1024, fsize 64 MB. `/work` is an **uncapped** host bind mount |
+| `hardened` | Docker | `--network none`, `--read-only`, uid 65534, `--cap-drop ALL`, `no-new-privileges`, 16 MB tmpfs `/tmp` | wall 10 s, output 1 MB, memory 128 MB with swap disabled, cpus 1, pids 64, nofile 256, fsize 8 MB, **32 MB tmpfs workspace** |
+
+`docker-baseline` used to be called `default` and was described as "plain `docker run`,
+nothing added". That was wrong: it always carried the limits above. The old name still works
+as an alias in the Python API.
+
+**How a Docker run works.** `docker run --detach` starts a labelled, uniquely named container
+with every flag and limit, idling on `sleep`. `docker exec` then runs the program under
+`timeout -k 2 <wall>`: SIGTERM at the budget, SIGKILL 2 s later if the program ignores it.
+The harness reads Docker's `OOMKilled` state, copies output files out, and runs
+`docker rm --force` in a `finally`, so an exception or Ctrl-C at any point still removes the
+container. Before the first run the image is pulled if missing, and the harness checks that
+it has a `timeout` supporting `-k`. If it doesn't, the run fails with a clear error instead
+of running without a budget.
+
+- **Output** is read in 64 KB chunks while the program runs, up to 1 MB per stream. Past the
+  cap the rest is discarded, the program is killed, and `output_truncated` is set, so memory
+  in the harness stays bounded whatever the program prints.
+- **Out of memory** comes from Docker's `OOMKilled` state, never from program output. A
+  program printing `MemoryError` is not reported as OOM. The subprocess backend can't observe
+  OOM, so it reports `null` (unknown).
+- **Timed out** means the budget fired *and* the program ran for the whole budget. A program
+  that calls `sys.exit(124)` early is not reported as timed out.
+- **Workspace.** Under `hardened`, `/work` is a 32 MB tmpfs. Inputs are copied in from a
+  read-only bind at `/in`, and outputs are copied out with `tar` through `docker exec`,
+  keeping only regular files with the requested names. A program can't fill the host disk,
+  and can't hand back a symlink. The tmpfs counts against the 128 MB memory limit.
+
 ## Input / Output
 
 All five samples are real output, saved in [`results/demo_output.txt`](results/demo_output.txt)
@@ -257,18 +305,22 @@ read-only-rootfs, no-network container, and the harness read it back.*
 ```bash
 git clone <this repo>
 cd agent-sandbox
-uv sync --extra dev
+uv sync                     # installs the package plus pytest/ruff (dev group)
 
 # run code under the hardened profile (needs Docker running)
 uv run agent-sandbox run --profile hardened --code "print(2 + 2)"
 
-# see the profiles and their limits
+# see the profiles and the limits actually enforced on this OS
 uv run agent-sandbox profiles
 
-# reproduce the finding
-uv run agent-sandbox chaos --reps 3 --out results/chaos.json
-uv run agent-sandbox latency --rounds 10 --out results/latency.json
+# reproduce the latency finding (writes a new file; the committed results are never
+# overwritten unless you name them with --out or pass --force)
+uv run agent-sandbox latency --rounds 100 --out my_latency.json
 ```
+
+Commands that need Docker (`chaos`, `latency`, `cleanup`, and `run` with a Docker profile)
+fail with a non-zero exit and an `agent-sandbox: error:` line when no engine is running.
+`--profile subprocess` prints a warning that the code runs directly on your host.
 
 The Python API mirrors the CLI:
 
@@ -276,8 +328,11 @@ The Python API mirrors the CLI:
 from agent_sandbox import Sandbox
 
 sb = Sandbox()
-r = sb.run(code="import sys; print(sum(int(x) for x in sys.stdin.read().split()))",
-           profile="hardened", stdin="1 2 3 4 5")
+r = sb.run(
+    code="import sys; print(sum(int(x) for x in sys.stdin.read().split()))",
+    profile="hardened",
+    stdin="1 2 3 4 5",
+)
 print(r.stdout, r.exit_code, r.duration_s)
 ```
 
@@ -286,15 +341,15 @@ print(r.stdout, r.exit_code, r.duration_s)
 ```
 src/agent_sandbox/
   types.py               RunSpec / RunResult / Limits — what to run, what was observed
-  profiles.py            the three named profiles (subprocess / default / hardened)
-  runner.py              Sandbox: pick a backend for a profile, apply its safety limits
-  latency.py             interleaved, paired latency + bootstrap CI
+  profiles.py            the three named profiles (subprocess / docker-baseline / hardened)
+  runner.py              Sandbox: pick a backend, apply limits; which limits this OS enforces
+  latency.py             counterbalanced, paired latency: Hodges-Lehmann + Wilcoxon CI, MDE
   cli.py                 run / profiles / chaos / latency / cleanup
   backends/
-    docker_cmd.py        pure `docker run` argv builder (unit-tested, no engine)
-    docker.py            labelled containers, --rm, kill-by-name, symlink-safe file-out
+    docker_cmd.py        pure `docker run --detach` / `docker exec` argv builders (no engine)
+    docker.py            pre-flight, labelled containers, OOMKilled, tar copy-out, rm in finally
     subprocess_backend.py the unsafe baseline (host child process)
-    base.py              output truncation + symlink-safe file-out reader
+    base.py              streamed, byte-capped output capture + symlink-safe file-out reader
   attacks/
     harness.py           HostBeacon (TCP+UDP), ChaosContext, AttackOutcome
     registry.py          30 attacks: payload + harness-side objective check
@@ -302,7 +357,7 @@ src/agent_sandbox/
 demo.py                  known-answer demo (output saved in results/demo_output.txt)
 scripts/
   run_chaos.sh           full suite + latency + cleanup
-  latency_ablation.py    default vs default-without-network vs hardened
+  latency_ablation.py    docker-baseline vs baseline-without-network vs hardened
   symlink_ablation.py    guarded vs naive file-out reader, Windows host + Linux simulation
 results/                 chaos, latency, both ablations, demo and CLI output —
                          every README number comes from a file here
@@ -310,9 +365,11 @@ results/                 chaos, latency, both ablations, demo and CLI output —
 
 ## Requirements
 
-Python 3.11+, `uv`, and a running Docker engine for the `default`/`hardened` columns (the
-`subprocess` baseline and the whole unit-test suite run without one). Only `python:3.12-slim`
-is pulled, from Docker Hub. **Zero runtime dependencies** — the package is pure standard library;
+Python 3.11+, `uv`, and a running Docker engine for the `docker-baseline`/`hardened` profiles
+(the `subprocess` baseline and the whole unit-test suite run without one). Only
+`python:3.12-slim` is pulled, from Docker Hub; any image works if it has `python`, `sleep`,
+`tar`, `cp`, `sh` and a coreutils-style `timeout` with `-k` (`timeout -k` and `sleep` are
+checked before the first run). **Zero runtime dependencies** — the package is pure standard library;
 `pytest`/`ruff` are dev-only.
 
 ## Tests
@@ -342,13 +399,12 @@ that grows.
 - **It does not test seccomp bypasses exhaustively.** It uses Docker's default seccomp profile
   and measures capability/syscall attacks against it; it is not a seccomp fuzzer.
 - **The subprocess baseline is intentionally unsafe.** It exists to be beaten, not shipped.
-- **`default` is not a completely naked `docker run`.** So that a resource bomb can't take down
-  the test machine, every Docker profile carries a loose host-safety floor (512 MB memory, 512
-  pids, 64 MB file size) plus a wall-clock timeout. The bombs are bounded below that floor, so
-  under `default` they succeed at their full bounded size. The finding is that `hardened`'s
-  tighter limits stop them; it is not a claim about what an unbounded bomb would do to a host.
-  On Windows the subprocess baseline has no memory or pids limits at all, so bombs were only
-  ever run in bounded form there.
+- **`docker-baseline` is not a naked `docker run`.** So that a resource bomb can't take down
+  the test machine, it carries a loose host-safety floor (512 MB memory with swap disabled,
+  512 pids, 2 cpus, 1024 files, 64 MB file size) plus a wall-clock timeout. The chaos suite's
+  bombs are bounded below that floor. Its `/work` is an uncapped host bind mount; only
+  `hardened` caps the workspace. On Windows the subprocess baseline enforces only the wall
+  clock and the output cap: no memory, pids, cpu or disk limits at all.
 - **The subprocess column covers 14 of 30 attacks.** The baseline ran on a Windows host, where
   the 16 `/proc`- and syscall-based attacks don't apply. They are reported as `n/a`, never as
   blocked.
@@ -357,10 +413,36 @@ that grows.
 
 - **The hardened profile hid the code it was supposed to run.** The first version mounted `/work`
   as a size-capped tmpfs *and* wrote `main.py` to a host dir that was never bound — so the
-  container started with an empty `/work` and `python: can't open '/work/main.py'`. A read-only
-  rootfs and a writable workspace are not in conflict: `/work` must be a bind mount (a bind
-  overrides the read-only rootfs), and only `/tmp` stays a tmpfs. Caught by an integration test
-  asserting the run's actual output, not just its exit code.
+  container started with an empty `/work` and `python: can't open '/work/main.py'`. The quick
+  fix made `/work` a host bind mount, which then left the workspace with no size limit at all:
+  a program could fill the host disk. `/work` is now a tmpfs again, with inputs copied in from
+  a read-only `/in` bind and outputs copied out with `tar` after the program exits. That needs
+  the container to outlive the program, which is why a run is `docker run --detach` plus
+  `docker exec`.
+- **A program that ignored SIGTERM ran 44.9 s against a 3 s budget.** The in-container
+  `timeout` only sent SIGTERM, so a program with `signal(SIGTERM, SIG_IGN)` was stopped only
+  by the outer 40 s safety net. It is now `timeout -k 2`: SIGKILL 2 s after the budget. The
+  regression test (a SIGTERM-ignoring sleeper, 3 s budget) now ends at exit 137 within about
+  5.5 s of program time.
+- **The 1 MB output cap didn't bound memory.** Both backends read all output with
+  `communicate()` and truncated it afterwards, so a program printing without end made the
+  harness buffer all of it. Output is now streamed in chunks with a byte cap, and the program is
+  killed once it passes the cap.
+- **"Out of memory" was whatever the program said.** A run was flagged OOM if stderr contained
+  `MemoryError`, which any program can print. It now comes from Docker's `OOMKilled` state. The
+  same logic had treated a self-chosen `sys.exit(124)` as a timeout; a timeout now also needs
+  the program to have run for the whole budget.
+- **A container killed from outside looked like a program result.** The first 100-round
+  ablation stopped with `stdout = 'cannot exec in a stopped state'`: the container got a
+  SIGKILL right after `docker exec` started, and Docker's event log had already dropped
+  enough history that the sender couldn't be identified. The program cannot have done it,
+  because PID 1 is `sleep` and ignores signals sent from inside the container. The harness had
+  passed Docker's error text through as the program's output. It now reads
+  `State.Running`, and a container that stopped with no OOM and no harness kill is reported as
+  an `error`. The ablation was then rerun from scratch.
+- **Ctrl-C leaked containers.** Only `TimeoutExpired` triggered a kill, so a
+  `KeyboardInterrupt` mid-run left the container running. Any exception now kills it, and
+  `docker rm --force` runs in a `finally`.
 - **The first orphan check said the subprocess baseline was safe. It wasn't.** The check
   waited 1.5 s for a detached child's marker file to change. On this loaded machine the child
   took longer than that just to start, so all three repetitions came back `blocked`.
@@ -374,9 +456,8 @@ that grows.
   longer than the whole 10 s budget before the code even started (sample 3 above shows 12.91 s
   of wall time for a 3 s budget). Enforcing the budget from
   outside marked ordinary runs as timed out. The budget is now enforced inside the container
-  with coreutils `timeout` (exit 124), with a 40 s start-up grace on the outer process as a
-  safety net only. Resource bombs get a 30 s budget, so they are stopped by the limit they
-  target and never by the clock.
+  with coreutils `timeout`, and container start-up has its own separate 90 s limit. Resource
+  bombs get a 30 s budget, so they are stopped by the limit they target and never by the clock.
 - **Two `hardened` "breaches" were the harness's mistakes.** `kcore_read` counted a
   successful `open()` as a leak, but Docker masks `/proc/kcore`, so the read returned 0 bytes.
   It now needs real bytes. `pid1_environ` read `/proc/1/environ`, but in a one-process
@@ -396,7 +477,14 @@ that grows.
   cached.
 - **Latency measured in sequence measured the neighbours.** An early block-by-block run made
   `hardened` look several seconds faster than `default`. That was host load drifting between
-  the two blocks, not the flags. Profiles are now interleaved and differenced within each round.
+  the two blocks, not the flags. Profiles were then interleaved, but always in the same order,
+  so a position effect would still have been counted as a profile effect. The order is now
+  shuffled every round, and the analysis is paired and robust, with the minimum detectable
+  effect reported.
+- **The egress beacon listened on every interface.** It was documented as loopback but bound
+  to `0.0.0.0`, so anything on the LAN could reach it while the suite ran. It now binds
+  `127.0.0.1`. Before the change, a probe container confirmed that Docker Desktop still
+  delivers both TCP and UDP from `host.docker.internal` to a listener on the host's loopback.
 - **Killing safely on a shared box.** Timeouts must tear down runaway work without touching other
   people's processes. Containers are killed by their unique name; subprocess trees by the exact
   PID launched (`taskkill /T` / `killpg`); a would-be orphan is killed only by the child PID the

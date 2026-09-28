@@ -1,28 +1,27 @@
 """The public run API: pick a backend for a profile, apply its safety limits, execute.
 
-Resource limits are treated as a *host-safety floor* attached to each profile, not as
-part of the isolation claim being tested. Even the ``default`` profile therefore runs
-with a generous memory/pids/fsize cap and a wall-clock timeout, purely so a resource
-bomb in the suite cannot take down the machine running it. This is stated in the README;
-a genuinely naked ``docker run`` would omit them. The *isolation* differences (network,
-capabilities, user, rootfs, /proc, seccomp) are what distinguish the profiles, and those
-are applied exactly as the profile declares.
+Resource limits are a *host-safety floor* attached to each profile, separate from the
+isolation flags that distinguish the profiles. Even ``docker-baseline`` therefore runs with
+a memory cap (swap disabled), pids/cpus/nofile/fsize caps and a wall-clock timeout, so a
+resource bomb cannot take down the machine running it; a genuinely naked ``docker run``
+would have none of them. ``hardened`` adds tighter limits and a size-capped workspace.
 """
 
 from __future__ import annotations
 
 from .backends.docker import DEFAULT_IMAGE, DockerBackend
+from .backends.subprocess_backend import ENFORCED_LIMITS as SUBPROCESS_ENFORCED
 from .backends.subprocess_backend import SubprocessBackend
-from .profiles import get_profile
+from .profiles import canonical_name, get_profile
 from .types import Limits, RunResult, RunSpec
 
 _MB = 1 << 20
 
-# Host-safety limits per profile. Hardened is tight; default is a loose floor that still
-# protects the host; subprocess gets a wall timeout only (POSIX rlimits when available).
 PROFILE_LIMITS: dict[str, Limits] = {
+    # Only wall/output (plus memory/fsize/nofile rlimits on POSIX) are enforced here; see
+    # enforced_limits().
     "subprocess": Limits(wall_seconds=10.0, memory_bytes=512 * _MB, fsize_bytes=64 * _MB),
-    "default": Limits(
+    "docker-baseline": Limits(
         wall_seconds=10.0,
         memory_bytes=512 * _MB,
         cpus=2.0,
@@ -37,27 +36,57 @@ PROFILE_LIMITS: dict[str, Limits] = {
         pids=64,
         nofile=256,
         fsize_bytes=8 * _MB,
+        # tmpfs pages count against the memory cgroup, so this must stay well under it.
+        workspace_bytes=32 * _MB,
     ),
 }
 
+_ALL_LIMITS = (
+    "wall_seconds",
+    "output_bytes",
+    "memory_bytes",
+    "cpus",
+    "pids",
+    "nofile",
+    "fsize_bytes",
+    "workspace_bytes",
+)
+
 
 def limits_for(profile_name: str) -> Limits:
-    return PROFILE_LIMITS[profile_name]
+    return PROFILE_LIMITS[canonical_name(profile_name)]
+
+
+def enforced_limits(profile_name: str) -> dict[str, object]:
+    """The limits of a profile that are actually enforced on this OS, by field name."""
+    prof = get_profile(profile_name)
+    lim = limits_for(prof.name)
+    names = SUBPROCESS_ENFORCED if prof.backend == "subprocess" else _ALL_LIMITS
+    return {n: getattr(lim, n) for n in names if getattr(lim, n) is not None}
 
 
 class Sandbox:
     """Entry point. Holds one backend per kind and routes by profile."""
 
-    def __init__(self, image: str = DEFAULT_IMAGE) -> None:
-        self._docker = DockerBackend(image=image)
+    def __init__(self, image: str = DEFAULT_IMAGE, session: str | None = None) -> None:
+        self._docker = DockerBackend(image=image, session=session)
         self._subprocess = SubprocessBackend()
 
     @property
     def image(self) -> str:
         return self._docker.image
 
+    @property
+    def session(self) -> str:
+        """The label value on every container this Sandbox creates."""
+        return self._docker.session
+
     def docker_available(self) -> bool:
         return self._docker.available()
+
+    def preflight(self) -> None:
+        """Pull the image if missing and check it can enforce the budget (see DockerBackend)."""
+        self._docker.preflight()
 
     def run(
         self,
@@ -79,13 +108,17 @@ class Sandbox:
             env=env or {},
             files_in=files_in or {},
             files_out=files_out,
-            limits=limits or limits_for(profile),
+            limits=limits or limits_for(prof.name),
         )
+        return self.run_spec(spec, prof.name)
+
+    def run_spec(self, spec: RunSpec, profile: str) -> RunResult:
+        prof = get_profile(profile)
         if prof.backend == "docker":
-            if not self._docker.available():
+            if not self.docker_available():
                 return RunResult(
                     backend="docker",
-                    profile=profile,
+                    profile=prof.name,
                     exit_code=None,
                     stdout="",
                     stderr="",
@@ -96,11 +129,10 @@ class Sandbox:
             return self._docker.run(spec, prof)
         return self._subprocess.run(spec, prof)
 
-    def run_spec(self, spec: RunSpec, profile: str) -> RunResult:
-        prof = get_profile(profile)
-        if prof.backend == "docker":
-            return self._docker.run(spec, prof)
-        return self._subprocess.run(spec, prof)
+    def cleanup(self, session: str | None = None) -> int:
+        """Remove every container of one session (this Sandbox's by default), any state."""
+        return self._docker.cleanup(session)
 
-    def cleanup(self) -> int:
-        return self._docker.cleanup()
+    def remove_stopped(self) -> int:
+        """Remove stopped agent-sandbox containers of any session (never a live run)."""
+        return self._docker.remove_stopped()

@@ -1,41 +1,56 @@
 """Subprocess backend: runs code as a bare child process on the host.
 
-This is the *unsafe baseline*. It exists to be beaten. It applies a wall-clock timeout
-and, on POSIX, best-effort ``rlimit`` caps; on Windows those rlimits are unavailable, so
-resource-exhaustion payloads are only ever run in their self-bounded form (the harness
-never launches an unbounded bomb here -- see ``attacks/programs``).
+This is the *unsafe baseline*: it exists to be beaten, never to contain anything. What it
+enforces:
 
-It inherits the host environment on purpose: a real "just run the code" harness does, and
-that is exactly the leak the chaos suite measures.
+* everywhere: the wall-clock timeout (the process tree is killed) and the per-stream output
+  cap (the tree is killed once a stream passes it);
+* on POSIX only: ``RLIMIT_AS`` (memory), ``RLIMIT_FSIZE`` and ``RLIMIT_NOFILE``, set in the
+  child before exec. Windows has no equivalent here, so those limits are not enforced there.
+
+It never enforces pids or cpu limits and has no workspace size cap. It inherits the host
+environment on purpose: a real "just run the code" harness does.
+
+Out-of-memory is not observable from outside a plain child process (an ``RLIMIT_AS`` failure
+surfaces only as the program's own ``MemoryError``, which it could print regardless), so
+``RunResult.out_of_memory`` is always ``None`` (unknown) for this backend.
 """
 
 from __future__ import annotations
 
 import contextlib
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 from ..profiles import Profile
-from ..types import RunResult, RunSpec
-from .base import read_files_out, truncate
+from ..types import PROGRAM_FILE, RunResult, RunSpec
+from .base import read_files_out, run_capped
+
+# Limits this backend actually enforces on the current OS (see module docstring).
+ENFORCED_LIMITS: tuple[str, ...] = (
+    ("wall_seconds", "output_bytes", "memory_bytes", "fsize_bytes", "nofile")
+    if os.name == "posix"
+    else ("wall_seconds", "output_bytes")
+)
 
 
 class SubprocessBackend:
     name = "subprocess"
 
     def available(self) -> bool:
-        return True
+        return True  # needs nothing beyond this interpreter; mirrors DockerBackend.available
 
     def run(self, spec: RunSpec, profile: Profile) -> RunResult:
         workdir = Path(tempfile.mkdtemp(prefix="agsbx-sub-"))
         try:
             return self._run_in(workdir, spec, profile)
         finally:
-            _rmtree(workdir)
+            shutil.rmtree(workdir, ignore_errors=True)
 
     def _run_in(self, workdir: Path, spec: RunSpec, profile: Profile) -> RunResult:
         for rel, content in spec.files_in.items():
@@ -44,8 +59,8 @@ class SubprocessBackend:
             dest.write_bytes(content)
 
         if spec.code is not None:
-            (workdir / "main.py").write_bytes(spec.code.encode("utf-8"))
-            argv = [sys.executable, "-u", str(workdir / "main.py")]
+            (workdir / PROGRAM_FILE).write_bytes(spec.code.encode("utf-8"))
+            argv = [sys.executable, "-u", str(workdir / PROGRAM_FILE)]
         else:
             assert spec.argv is not None
             argv = list(spec.argv)
@@ -53,54 +68,33 @@ class SubprocessBackend:
         env = dict(os.environ)  # unsafe baseline inherits everything
         env.update(spec.env)
 
-        popen_kwargs: dict[str, object] = {}
+        popen_kwargs: dict[str, object] = {"cwd": str(workdir), "env": env}
         if os.name == "posix":
-            popen_kwargs["preexec_fn"] = _posix_limits(spec)  # noqa: PLW1509
+            popen_kwargs["preexec_fn"] = _posix_limits(spec)
         elif os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
-        start = time.monotonic()
-        timed_out = False
-        proc = subprocess.Popen(  # noqa: S603
+        cap = run_capped(
             argv,
-            cwd=str(workdir),
-            env=env,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            **popen_kwargs,  # type: ignore[arg-type]
+            stdin=spec.stdin.encode("utf-8"),
+            output_bytes=spec.limits.output_bytes,
+            deadline_s=spec.limits.wall_seconds,
+            kill=lambda proc: _kill_tree(proc.pid),
+            **popen_kwargs,
         )
-        try:
-            out_raw, err_raw = proc.communicate(
-                input=spec.stdin.encode("utf-8"),
-                timeout=spec.limits.wall_seconds,
-            )
-            exit_code: int | None = proc.returncode
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            exit_code = None
-            _kill_tree(proc.pid)
-            try:
-                out_raw, err_raw = proc.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                out_raw, err_raw = b"", b""
-        duration = time.monotonic() - start
-
-        stdout, t1 = truncate(out_raw.decode("utf-8", "replace"), spec.limits.output_bytes)
-        stderr, t2 = truncate(err_raw.decode("utf-8", "replace"), spec.limits.output_bytes)
-
         return RunResult(
             backend=self.name,
             profile=profile.name,
-            exit_code=exit_code,
-            stdout=stdout,
-            stderr=stderr,
-            duration_s=duration,
-            timed_out=timed_out,
-            out_of_memory="MemoryError" in stderr,
-            output_truncated=t1 or t2,
+            exit_code=None if cap.deadline_hit else cap.exit_code,
+            stdout=cap.stdout,
+            stderr=cap.stderr,
+            duration_s=cap.seconds,
+            timed_out=cap.deadline_hit,
+            out_of_memory=None,
+            output_truncated=cap.output_truncated,
             files_out=read_files_out(workdir, spec.files_out),
             argv=tuple(argv),
+            program_s=cap.seconds,
         )
 
 
@@ -124,19 +118,12 @@ def _posix_limits(spec: RunSpec):  # pragma: no cover - not exercised on Windows
 def _kill_tree(pid: int) -> None:
     """Kill the process tree rooted at our own launched pid (only that tree)."""
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True,
-            timeout=15,
-        )
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                timeout=15,
+            )
     else:  # pragma: no cover - not exercised on Windows CI
-        import signal
-
         with contextlib.suppress(ProcessLookupError):
             os.killpg(os.getpgid(pid), signal.SIGKILL)
-
-
-def _rmtree(path: Path) -> None:
-    import shutil
-
-    shutil.rmtree(path, ignore_errors=True)

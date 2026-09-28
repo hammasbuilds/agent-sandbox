@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .harness import BLOCKED, ERROR, NA, SUCCEEDED, AttackOutcome, ChaosContext, HostBeacon
+from .harness import BLOCKED, ERROR, MIXED, NA, SUCCEEDED, AttackOutcome, ChaosContext, HostBeacon
 from .registry import Attack, build_attacks
 
 __all__ = [
@@ -15,4 +15,5 @@ __all__ = [
     "BLOCKED",
     "NA",
     "ERROR",
+    "MIXED",
 ]

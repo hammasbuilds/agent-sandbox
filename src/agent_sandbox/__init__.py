@@ -4,8 +4,15 @@ what each profile actually stops.
 
 from __future__ import annotations
 
-from .profiles import DEFAULT, HARDENED, PROFILES, SUBPROCESS, Profile, get_profile
-from .runner import Sandbox, limits_for
+from .profiles import (
+    DOCKER_BASELINE,
+    HARDENED,
+    PROFILES,
+    SUBPROCESS,
+    Profile,
+    get_profile,
+)
+from .runner import Sandbox, enforced_limits, limits_for
 from .types import Limits, RunResult, RunSpec
 
 __all__ = [
@@ -15,11 +22,12 @@ __all__ = [
     "Limits",
     "Profile",
     "PROFILES",
-    "DEFAULT",
+    "DOCKER_BASELINE",
     "HARDENED",
     "SUBPROCESS",
     "get_profile",
     "limits_for",
+    "enforced_limits",
 ]
 
 __version__ = "0.1.0"

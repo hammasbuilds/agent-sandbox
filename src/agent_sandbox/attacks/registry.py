@@ -1,7 +1,18 @@
 """The chaos / escape suite: 30+ real attack programs with harness-side success checks.
 
 Each ``Attack`` carries a payload (``code``) and a ``check`` that the *harness* runs to
-decide the outcome from evidence it can see for itself. Outcomes:
+decide the outcome. What that check rests on differs, and ``Attack.evidence`` says which:
+
+* ``observed`` -- the harness sees the effect itself: a nonce arriving at its host
+  listener, Docker's own state (OOMKilled, the timeout, the output cap), a host marker file,
+  a process count taken inside the container before teardown, the file-out bytes.
+* ``token``    -- an unguessable token the harness planted (a secret, a canary file) turns up
+  in the captured output. The payload prints it, but it can only print it if it read it.
+* ``payload``  -- the harness parses a marker printed by the payload (``UID 0``,
+  ``CAPEFF 0x...``, ``WROTE_MB 48``). The payload is harness-authored, so the report is
+  trusted; but it is the payload's own account, not an independent observation.
+
+Outcomes:
 
 * ``SUCCEEDED`` -- the attack achieved its goal; the sandbox did **not** contain it.
 * ``BLOCKED``   -- the sandbox contained it.
@@ -28,6 +39,9 @@ Check = Callable[[RunResult, ChaosContext], AttackOutcome]
 # clock -- otherwise a slow, loaded host turns "the limit held" into "it ran out of time".
 # The bombs are self-bounded, so a generous budget cannot hurt the host.
 BOMB_WALL_S = 30.0
+# disk_fill writes 48 MB; reaching this many MB means the 32 MB hardened workspace cap
+# (the thing under test) did not hold.
+DISK_FILL_THRESHOLD_MB = 40
 
 
 @dataclass(frozen=True)
@@ -42,8 +56,12 @@ class Attack:
     needs_beacon: bool = False
     needs_secret: bool = False
     needs_canary: bool = False
-    linux_only: bool = False  # /proc- or syscall-based; N/A on a Windows-host subprocess
+    # /proc- or syscall-based: not run (n/a) by the subprocess backend on a non-Linux host.
+    linux_only: bool = False
     wall_override: float | None = None  # shorter timeout for attacks that block by timing out
+    # Resolved by the runner after the run returns (a process that outlives the program).
+    outlives_run: bool = False
+    evidence: str = "payload"  # "observed" | "token" | "payload" (see module docstring)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -119,9 +137,15 @@ def chk_setuid(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
     na = _na_if_not_linux(result, ctx)
     if na:
         return na
+    start = _num(result, "START_UID")
+    if start is None:
+        return AttackOutcome(ERROR, f"payload did not report its starting uid: {_last(result)}")
+    if start == 0:
+        # Already root: setuid(0) is a no-op, not an escalation (run_as_root covers this).
+        return AttackOutcome(NA, "started as uid 0, so there was nothing to escalate")
     if "ESCALATED" in result.stdout:
-        return AttackOutcome(SUCCEEDED, "gained euid 0 via setuid(0)")
-    return AttackOutcome(BLOCKED, f"setuid(0) refused: {_last(result)}")
+        return AttackOutcome(SUCCEEDED, f"went from uid {start} to uid 0 via setuid(0)")
+    return AttackOutcome(BLOCKED, f"setuid(0) refused for uid {start}: {_last(result)}")
 
 
 def chk_caps(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
@@ -190,7 +214,11 @@ def _bomb_check(marker: str, threshold: int, human: str) -> Check:
             return AttackOutcome(ERROR, f"{human}: no count in output ({_last(result)})")
         if n >= threshold:
             return AttackOutcome(SUCCEEDED, f"{human}: reached {n} (>= {threshold})")
-        return AttackOutcome(BLOCKED, f"{human}: stopped at {n} (limit held below {threshold})")
+        stop = re.search(r"^STOP (.*)$", result.stdout, re.MULTILINE)
+        why = f"; {stop.group(1).strip()[:80]}" if stop else ""
+        return AttackOutcome(
+            BLOCKED, f"{human}: stopped at {n} (limit held below {threshold}){why}"
+        )
 
     return check
 
@@ -202,23 +230,22 @@ def chk_timeout_enforced(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
     return AttackOutcome(SUCCEEDED, "ran to completion past what should have been a timeout")
 
 
-def chk_time_bomb(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
-    # Success = the delayed payload detonated (marker written) despite the timeout.
-    if "detonated" in result.files_out.get("detonated.txt", b"").decode("utf-8", "ignore"):
-        return AttackOutcome(SUCCEEDED, "payload survived and detonated after the timeout window")
-    return AttackOutcome(BLOCKED, "killed before the delayed payload could fire")
-
-
-def chk_orphan(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
-    # Filled in by the runner, which watches the marker file AFTER run() returns.
-    return AttackOutcome(ERROR, "orphan check must be resolved by the runner")
+def chk_outlives_run(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
+    # orphan_survivor / time_bomb are decided by the chaos runner, which looks for the child
+    # AFTER run() returns (chaos.ChaosRunner._resolve_orphan); reaching this is a wiring bug.
+    return AttackOutcome(ERROR, "this attack must be resolved by the chaos runner")
 
 
 def chk_symlink(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
-    got = result.files_out.get("out.txt", b"").decode("utf-8", "ignore")
-    if ctx.canary_token and ctx.canary_token in got:
-        return AttackOutcome(SUCCEEDED, "file-out followed a symlink off the workdir to a host")
-    return AttackOutcome(BLOCKED, "harness refused to follow the symlink out of the workdir")
+    # The payload never writes a regular file at out.txt, only a symlink, so any bytes the
+    # harness hands back for out.txt came through the link from outside the workdir.
+    got = result.files_out.get("out.txt")
+    if got is not None:
+        leaked = "the host canary" if ctx.canary_token.encode() in got else f"{len(got)} bytes"
+        return AttackOutcome(SUCCEEDED, f"file-out followed the symlink and returned {leaked}")
+    if "LINKED" not in result.stdout:
+        return AttackOutcome(NA, f"the payload could not create a symlink here: {_last(result)}")
+    return AttackOutcome(BLOCKED, "file-out refused the symlink planted at the output path")
 
 
 def chk_rootfs_write(result: RunResult, ctx: ChaosContext) -> AttackOutcome:
@@ -298,12 +325,15 @@ else:
 
 P_CANARY = """
 import os
-path = os.environ["SBX_CANARY_PATH"]
-try:
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        print("CANARY", f.read().strip())
-except Exception as e:
-    print("FAIL", type(e).__name__, e)
+# One candidate per line: where the harness's host canary file would be if the host
+# filesystem were reachable from here (see chaos.canary_candidates).
+for path in os.environ["SBX_CANARY_PATHS"].splitlines():
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            print("CANARY", path, f.read().strip())
+        break
+    except Exception as e:
+        print("FAIL", path, type(e).__name__)
 """
 
 P_SHADOW = """
@@ -330,6 +360,7 @@ import os, sys
 if not hasattr(os, "setuid"):
     print("NOTLINUX"); sys.exit(0)
 start = os.getuid()
+print("START_UID", start)
 try:
     os.setuid(0)
     print("ESCALATED from", start, "to", os.getuid())
@@ -542,28 +573,20 @@ while True:
     x = (x * 1103515245 + 12345) & 0x7fffffff
 """
 
-P_TIMEBOMB = """
-import os, time
-delay = float(os.environ.get("SBX_BOMB_DELAY", "30"))
-time.sleep(delay)
-with open("detonated.txt", "w") as f:
-    f.write("detonated")
-print("DETONATED")
-"""
-
-P_ORPHAN = """
-import os, sys, subprocess, time
-# Spawn a detached child that keeps rewriting a marker file, then exit 0 immediately.
-# If the sandbox tears the whole run down, the marker stops advancing.
-marker = os.environ.get("SBX_ORPHAN_MARKER", "orphan.txt")
-child = (
-    "import os, time\\n"
-    "m = os.environ.get('SBX_ORPHAN_MARKER', 'orphan.txt')\\n"
-    "for i in range(100):\\n"
-    "    open(m, 'w').write(str(i))\\n"
-    "    time.sleep(0.2)\\n"
+# The child both process attacks leave behind: it rewrites a marker file every 0.2 s for
+# 20 s, so a live process shows up as a marker whose content keeps changing.
+_CHILD = (
+    "import os, time\n"
+    "m = os.environ.get('SBX_ORPHAN_MARKER', 'orphan.txt')\n"
+    "for i in range(100):\n"
+    "    open(m, 'w').write(str(i))\n"
+    "    time.sleep(0.2)\n"
 )
-kw = {}
+
+_SPAWN = f"""
+import os, sys, subprocess
+marker = os.environ.get("SBX_ORPHAN_MARKER", "orphan.txt")
+kw = {{}}
 if os.name == "nt":
     kw["creationflags"] = 0x00000008  # DETACHED_PROCESS
 else:
@@ -571,10 +594,22 @@ else:
 # The child runs from the marker's directory, not the workdir: its goal is to outlive the
 # run, not to pin the workdir (which would only block the harness's clean-up).
 kw["cwd"] = os.path.dirname(os.path.abspath(marker)) or "."
-p = subprocess.Popen([sys.executable, "-c", child], **kw)
-print("ORPHAN_PID", p.pid)
-print("SPAWNED", marker)
+p = subprocess.Popen([sys.executable, "-c", {_CHILD!r}], **kw)
+print("ORPHAN_PID", p.pid, flush=True)
 """
+
+# Spawn a detached child, then exit 0 at once: does anything outlive a normal exit?
+P_ORPHAN = _SPAWN
+
+# Spawn a detached child, then spin until the wall-clock budget kills the program: does
+# the timeout's kill reach a child in its own session, or does the child act afterwards?
+P_TIMEBOMB = (
+    _SPAWN
+    + """
+while True:
+    pass
+"""
+)
 
 P_OUTPUTFLOOD = """
 import sys
@@ -586,30 +621,36 @@ print("DONE")
 """
 
 P_DISK = """
-import os
-cap = int(os.environ.get("SBX_DISK_CAP_MB", "40"))
-target = os.environ.get("SBX_DISK_DIR", ".")
-path = os.path.join(target, "agent_sandbox_fill.bin")
-written = 0
+import errno, os
+# Fill the workdir with 4 MB files (each under every profile's per-file fsize ulimit), so
+# what stops it is the size of the workspace, not the ulimit.
+cap = int(os.environ.get("SBX_DISK_CAP_MB", "48"))
+chunk = b"x" * (1024 * 1024)
+written = 0; paths = []
 try:
-    with open(path, "wb") as f:
-        chunk = b"x" * (1024 * 1024)
-        for i in range(cap):
-            f.write(chunk); f.flush(); written = i + 1
+    while written < cap:
+        paths.append(f"agent_sandbox_fill_{len(paths)}.bin")
+        with open(paths[-1], "wb") as f:
+            for _ in range(4):
+                f.write(chunk); f.flush(); written += 1
+                if written >= cap:
+                    break
 except OSError as e:
-    print("STOP", type(e).__name__, e)
-try:
-    os.remove(path)
-except OSError:
-    pass
+    print("STOP", errno.errorcode.get(e.errno, e.errno), type(e).__name__)
+for p in paths:
+    try:
+        os.remove(p)
+    except OSError:
+        pass
 print("WROTE_MB", written)
 """
 
 P_SYMLINK = """
 import os
-# A relative target climbs out of the workdir; it resolves on the HOST side of the bind
-# mount, where the harness reads file-out -- the realistic shape of this attack.
-target = os.environ.get("SBX_CANARY_REL") or os.environ["SBX_CANARY_PATH"]
+# The harness names a target outside the workdir that its own file-out reader could reach:
+# a relative climb to the host canary where file-out is read on the host, or a file
+# outside /work where file-out is read inside the container.
+target = os.environ["SBX_LINK_TARGET"]
 try:
     if os.path.lexists("out.txt"):
         os.remove("out.txt")
@@ -626,87 +667,292 @@ except Exception as e:
 def build_attacks() -> list[Attack]:
     return [
         # ---- network egress
-        Attack("tcp_egress", "network", "connect TCP to a host listener and send a nonce",
-               "reach the harness's beacon (real egress)", P_TCP, chk_beacon, needs_beacon=True),
-        Attack("udp_egress", "network", "send UDP datagrams carrying a nonce to a host listener",
-               "beacon receives the UDP nonce", P_UDP, chk_beacon, needs_beacon=True),
-        Attack("http_egress", "network", "HTTP GET the host beacon with the nonce in the path",
-               "beacon logs the nonce path", P_HTTP, chk_beacon, needs_beacon=True),
-        Attack("dns_resolve", "network", "resolve a public hostname via getaddrinfo",
-               "DNS resolution succeeds", P_DNS, chk_dns),
+        Attack(
+            "tcp_egress",
+            "network",
+            "connect TCP to a host listener and send a nonce",
+            "reach the harness's beacon (real egress)",
+            P_TCP,
+            chk_beacon,
+            needs_beacon=True,
+            evidence="observed",
+        ),
+        Attack(
+            "udp_egress",
+            "network",
+            "send UDP datagrams carrying a nonce to a host listener",
+            "beacon receives the UDP nonce",
+            P_UDP,
+            chk_beacon,
+            needs_beacon=True,
+            evidence="observed",
+        ),
+        Attack(
+            "http_egress",
+            "network",
+            "HTTP GET the host beacon with the nonce in the path",
+            "beacon logs the nonce path",
+            P_HTTP,
+            chk_beacon,
+            needs_beacon=True,
+            evidence="observed",
+        ),
+        Attack(
+            "dns_resolve",
+            "network",
+            "resolve a public hostname via getaddrinfo",
+            "DNS resolution succeeds",
+            P_DNS,
+            chk_dns,
+        ),
         # ---- filesystem / data
-        Attack("env_secret_read", "data", "read a secret from the process environment",
-               "print a secret the harness planted in the host env", P_SECRET, chk_secret,
-               needs_secret=True),
-        Attack("host_canary_read", "data", "open a sensitive host file path",
-               "read a host canary file's token", P_CANARY, chk_canary, needs_canary=True),
-        Attack("etc_shadow_read", "data", "read /etc/shadow",
-               "read the shadow password file (root-only)", P_SHADOW, chk_shadow, linux_only=True),
-        Attack("disk_fill", "resource", "write a large file until the filesystem stops it",
-               "fill disk past the hardened cap", P_DISK,
-               _bomb_check("WROTE_MB", 24, "disk fill"), wall_override=BOMB_WALL_S),
-        Attack("symlink_fileout", "data", "plant a symlink at a file-out path off the workdir",
-               "make file-out return a host file's contents", P_SYMLINK, chk_symlink,
-               files_out=("out.txt",), needs_canary=True),
-        Attack("rootfs_write", "data", "write a file under /etc on the container rootfs",
-               "modify the container root filesystem", P_ROOTFS_WRITE, chk_rootfs_write,
-               linux_only=True),
+        Attack(
+            "env_secret_read",
+            "data",
+            "read a secret from the process environment",
+            "print a secret the harness planted in the host env",
+            P_SECRET,
+            chk_secret,
+            needs_secret=True,
+            evidence="token",
+        ),
+        Attack(
+            "host_canary_read",
+            "data",
+            "open a host file by its host path, by a climb out of the workdir, and by the "
+            "Docker Desktop host-mount paths",
+            "read a host canary file's token",
+            P_CANARY,
+            chk_canary,
+            needs_canary=True,
+            evidence="token",
+        ),
+        Attack(
+            "etc_shadow_read",
+            "data",
+            "read /etc/shadow",
+            "read the shadow password file (root-only)",
+            P_SHADOW,
+            chk_shadow,
+            linux_only=True,
+        ),
+        Attack(
+            "disk_fill",
+            "resource",
+            "write 48 MB of 4 MB files into the workdir (bounded)",
+            "fill the workspace past the hardened 32 MB cap",
+            P_DISK,
+            _bomb_check("WROTE_MB", DISK_FILL_THRESHOLD_MB, "disk fill"),
+            wall_override=BOMB_WALL_S,
+        ),
+        Attack(
+            "symlink_fileout",
+            "data",
+            "plant a symlink at a file-out path aimed off the workdir",
+            "make file-out return a file from outside the workdir",
+            P_SYMLINK,
+            chk_symlink,
+            files_out=("out.txt",),
+            needs_canary=True,
+            evidence="observed",
+        ),
+        Attack(
+            "rootfs_write",
+            "data",
+            "write a file under /etc on the container rootfs",
+            "modify the container root filesystem",
+            P_ROOTFS_WRITE,
+            chk_rootfs_write,
+            linux_only=True,
+        ),
         # ---- privilege / capabilities
-        Attack("run_as_root", "privilege", "check the effective uid",
-               "run as uid 0 inside the container", P_ROOT, chk_root, linux_only=True),
-        Attack("setuid_escalate", "privilege", "call setuid(0) from the starting user",
-               "gain root it did not start with", P_SETUID, chk_setuid, linux_only=True),
-        Attack("cap_effective", "privilege", "read CapEff from /proc/self/status",
-               "retain any Linux capability", P_CAPS, chk_caps, linux_only=True),
-        Attack("raw_socket", "privilege", "open an AF_INET/SOCK_RAW socket",
-               "create a raw socket (needs CAP_NET_RAW)", P_RAW, chk_raw_socket, linux_only=True),
-        Attack("mount_syscall", "privilege", "mount() a new proc filesystem",
-               "mount inside the container (needs CAP_SYS_ADMIN)", P_MOUNT, chk_mount,
-               linux_only=True),
-        Attack("raise_priority", "privilege", "os.nice(-10) to raise scheduling priority",
-               "raise priority (needs CAP_SYS_NICE)", P_NICE, chk_nice, linux_only=True),
+        Attack(
+            "run_as_root",
+            "privilege",
+            "check the effective uid",
+            "run as uid 0 inside the container",
+            P_ROOT,
+            chk_root,
+            linux_only=True,
+        ),
+        Attack(
+            "setuid_escalate",
+            "privilege",
+            "call setuid(0) from the starting user",
+            "gain root it did not start with",
+            P_SETUID,
+            chk_setuid,
+            linux_only=True,
+        ),
+        Attack(
+            "cap_effective",
+            "privilege",
+            "read CapEff from /proc/self/status",
+            "retain any Linux capability",
+            P_CAPS,
+            chk_caps,
+            linux_only=True,
+        ),
+        Attack(
+            "raw_socket",
+            "privilege",
+            "open an AF_INET/SOCK_RAW socket",
+            "create a raw socket (needs CAP_NET_RAW)",
+            P_RAW,
+            chk_raw_socket,
+            linux_only=True,
+        ),
+        Attack(
+            "mount_syscall",
+            "privilege",
+            "mount() a new proc filesystem",
+            "mount inside the container (needs CAP_SYS_ADMIN)",
+            P_MOUNT,
+            chk_mount,
+            linux_only=True,
+        ),
+        Attack(
+            "raise_priority",
+            "privilege",
+            "os.nice(-10) to raise scheduling priority",
+            "raise priority (needs CAP_SYS_NICE)",
+            P_NICE,
+            chk_nice,
+            linux_only=True,
+        ),
         # ---- info leak / container fingerprint
-        Attack("kernel_version_leak", "infoleak", "read /proc/version",
-               "read the shared host kernel version", P_KERNEL,
-               _leak_check("KERNEL", "leaked the host kernel version (shared kernel)"),
-               linux_only=True),
-        Attack("mountinfo_leak", "infoleak", "read /proc/self/mountinfo",
-               "fingerprint the container's overlay/host mounts", P_CGROUP,
-               _leak_check("OVERLAY", "leaked overlay/host mount layout"), linux_only=True),
-        Attack("sysrq_trigger", "infoleak", "write to /proc/sysrq-trigger",
-               "issue a kernel SysRq (host control)", P_SYSRQ,
-               _leak_check("SYSRQ_WROTE", "wrote to /proc/sysrq-trigger"), linux_only=True),
-        Attack("kcore_read", "infoleak", "read /proc/kcore",
-               "read kernel memory image", P_KCORE,
-               _leak_check("KCORE", "read /proc/kcore"), linux_only=True),
-        Attack("dev_mem", "infoleak", "open /dev/mem",
-               "read physical memory device", P_DEVMEM,
-               _leak_check("DEVMEM_OK", "opened /dev/mem"), linux_only=True),
+        Attack(
+            "kernel_version_leak",
+            "infoleak",
+            "read /proc/version",
+            "read the shared host kernel version",
+            P_KERNEL,
+            _leak_check("KERNEL", "leaked the host kernel version (shared kernel)"),
+            linux_only=True,
+        ),
+        Attack(
+            "mountinfo_leak",
+            "infoleak",
+            "read /proc/self/mountinfo",
+            "fingerprint the container's overlay/host mounts",
+            P_CGROUP,
+            _leak_check("OVERLAY", "leaked overlay/host mount layout"),
+            linux_only=True,
+        ),
+        Attack(
+            "sysrq_trigger",
+            "infoleak",
+            "write to /proc/sysrq-trigger",
+            "issue a kernel SysRq (host control)",
+            P_SYSRQ,
+            _leak_check("SYSRQ_WROTE", "wrote to /proc/sysrq-trigger"),
+            linux_only=True,
+        ),
+        Attack(
+            "kcore_read",
+            "infoleak",
+            "read /proc/kcore",
+            "read kernel memory image",
+            P_KCORE,
+            _leak_check("KCORE", "read /proc/kcore"),
+            linux_only=True,
+        ),
+        Attack(
+            "dev_mem",
+            "infoleak",
+            "open /dev/mem",
+            "read physical memory device",
+            P_DEVMEM,
+            _leak_check("DEVMEM_OK", "opened /dev/mem"),
+            linux_only=True,
+        ),
         # ---- container-specific
-        Attack("docker_socket", "container", "connect to /var/run/docker.sock",
-               "talk to the host Docker API", P_DOCKERSOCK,
-               _leak_check("DOCKERSOCK", "reached the Docker socket"), linux_only=True),
-        Attack("cgroupfs_write", "container", "append to /sys/fs/cgroup/cgroup.procs",
-               "write the cgroup filesystem (release_agent-style escape surface)", P_CGROUPFS,
-               _leak_check("CGROUPFS_WRITABLE", "cgroup fs is writable"), linux_only=True),
+        Attack(
+            "docker_socket",
+            "container",
+            "connect to /var/run/docker.sock",
+            "talk to the host Docker API",
+            P_DOCKERSOCK,
+            _leak_check("DOCKERSOCK", "reached the Docker socket"),
+            linux_only=True,
+        ),
+        Attack(
+            "cgroupfs_write",
+            "container",
+            "append to /sys/fs/cgroup/cgroup.procs",
+            "write the cgroup filesystem (release_agent-style escape surface)",
+            P_CGROUPFS,
+            _leak_check("CGROUPFS_WRITABLE", "cgroup fs is writable"),
+            linux_only=True,
+        ),
         # ---- resource exhaustion (bounded)
-        Attack("memory_bomb", "resource", "allocate and touch memory in 1 MB chunks (bounded)",
-               "allocate past the hardened memory cap", P_MEMBOMB,
-               _bomb_check("ALLOC_MB", 200, "memory"), wall_override=BOMB_WALL_S),
-        Attack("thread_bomb", "resource", "spawn threads until refused (bounded)",
-               "spawn past the hardened pids limit", P_THREADBOMB,
-               _bomb_check("THREADS", 128, "threads"), wall_override=BOMB_WALL_S),
-        Attack("fork_bomb", "resource", "fork() children until refused (bounded, non-exponential)",
-               "fork past the hardened pids limit", P_FORKBOMB,
-               _bomb_check("FORKED", 128, "forks"), linux_only=True, wall_override=BOMB_WALL_S),
-        Attack("cpu_spin", "resource", "busy-loop forever",
-               "run past the wall-clock timeout", P_CPUSPIN, chk_timeout_enforced,
-               wall_override=4.0),
-        Attack("time_bomb", "resource", "sleep past the timeout, then write a marker",
-               "detonate a delayed payload after the timeout", P_TIMEBOMB, chk_time_bomb,
-               files_out=("detonated.txt",), wall_override=4.0),
-        Attack("orphan_survivor", "process", "spawn a detached child that outlives the parent",
-               "leave a process running after the run returns", P_ORPHAN, chk_orphan),
-        Attack("output_flood", "resource", "write ~50 MB to stdout",
-               "flood the harness's captured output", P_OUTPUTFLOOD, chk_output_flood),
+        Attack(
+            "memory_bomb",
+            "resource",
+            "allocate and touch memory in 1 MB chunks (bounded)",
+            "allocate past the hardened memory cap",
+            P_MEMBOMB,
+            _bomb_check("ALLOC_MB", 200, "memory"),
+            wall_override=BOMB_WALL_S,
+            evidence="observed",
+        ),
+        Attack(
+            "thread_bomb",
+            "resource",
+            "spawn threads until refused (bounded)",
+            "spawn past the hardened pids limit",
+            P_THREADBOMB,
+            _bomb_check("THREADS", 128, "threads"),
+            wall_override=BOMB_WALL_S,
+        ),
+        Attack(
+            "fork_bomb",
+            "resource",
+            "fork() children until refused (bounded, non-exponential)",
+            "fork past the hardened pids limit",
+            P_FORKBOMB,
+            _bomb_check("FORKED", 128, "forks"),
+            linux_only=True,
+            wall_override=BOMB_WALL_S,
+        ),
+        Attack(
+            "cpu_spin",
+            "resource",
+            "busy-loop forever",
+            "run past the wall-clock timeout",
+            P_CPUSPIN,
+            chk_timeout_enforced,
+            wall_override=4.0,
+            evidence="observed",
+        ),
+        Attack(
+            "time_bomb",
+            "process",
+            "spawn a detached child, then spin until the wall-clock timeout kills the program",
+            "keep a process acting after the timeout killed the program",
+            P_TIMEBOMB,
+            chk_outlives_run,
+            wall_override=4.0,
+            outlives_run=True,
+            evidence="observed",
+        ),
+        Attack(
+            "orphan_survivor",
+            "process",
+            "spawn a detached child, then exit normally",
+            "leave a process running after the run returns",
+            P_ORPHAN,
+            chk_outlives_run,
+            outlives_run=True,
+            evidence="observed",
+        ),
+        Attack(
+            "output_flood",
+            "resource",
+            "write ~50 MB to stdout",
+            "flood the harness's captured output",
+            P_OUTPUTFLOOD,
+            chk_output_flood,
+            evidence="observed",
+        ),
     ]

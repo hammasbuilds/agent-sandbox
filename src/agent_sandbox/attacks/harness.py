@@ -1,13 +1,19 @@
 """Harness-side machinery for the chaos suite.
 
-The whole point of this suite is that *the harness* decides whether an attack succeeded,
-from evidence it can see for itself -- a connection that actually arrived at a host
-listener, a canary token the harness planted and then found in captured output, a marker
-file whose mtime moved after the run returned -- never the attacker program's own claim.
+The harness scores every attack. For some attacks it sees the effect for itself -- a
+connection that actually arrived at a host listener, Docker's OOM state, a marker file that
+kept changing after the run returned; for others an unguessable token it planted turns up
+in the output; the rest parse a marker printed by the harness-authored payload
+(``registry.Attack.evidence`` records which).
 
-``HostBeacon`` is a tiny loopback TCP+UDP listener. A payload that manages real network
+``HostBeacon`` is a tiny TCP+UDP listener bound to the host's loopback interface
+(127.0.0.1), so nothing off the machine can reach it. A payload that manages real network
 egress can reach it and deposit a nonce; the beacon records the nonce, and that recorded
 nonce is the objective proof of egress. Under ``--network none`` nothing arrives.
+Containers reach it as ``host.docker.internal``: Docker Desktop proxies that name to the
+host's loopback (verified on this Windows host for TCP and UDP). On a Linux engine, where
+``host.docker.internal`` is the bridge gateway, a loopback-bound beacon is not reachable
+from a container and ``bind_host`` must be set to the bridge address instead.
 """
 
 from __future__ import annotations
@@ -73,7 +79,7 @@ class _UDPBeacon(threading.Thread):
 class HostBeacon:
     """Loopback TCP+UDP listener the harness runs while an egress attack executes."""
 
-    bind_host: str = "0.0.0.0"
+    bind_host: str = "127.0.0.1"
     tcp_port: int = 0
     udp_port: int = 0
     _tcp: _ThreadingTCPServer | None = field(default=None, repr=False)
@@ -111,6 +117,9 @@ SUCCEEDED = "succeeded"  # attack achieved its goal -> sandbox did NOT contain i
 BLOCKED = "blocked"  # attack contained -> sandbox held
 NA = "n/a"  # attack not applicable on this backend/platform
 ERROR = "error"  # harness or execution error
+# Cell-level only: the repetitions of one attack under one profile disagreed and at least
+# one of them succeeded.
+MIXED = "mixed"
 
 
 @dataclass
@@ -125,8 +134,6 @@ class ChaosContext:
 
     nonce: str
     secret: str
-    canary_path: str
     canary_token: str
     backend: str
-    host_alias: str
     beacon: HostBeacon | None = None

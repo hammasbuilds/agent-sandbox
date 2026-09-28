@@ -59,14 +59,23 @@ def test_files_in_and_out_roundtrip():
     assert r.files_out["out.txt"] == b"dcba"
 
 
-def test_output_truncation():
+def test_output_flood_is_capped_and_killed():
     spec = RunSpec(
-        code="import sys; sys.stdout.write('A' * 5000)",
-        limits=Limits(output_bytes=1000),
+        code="import sys\nwhile True: sys.stdout.write('A' * 65536)",
+        limits=Limits(wall_seconds=30.0, output_bytes=1 << 20),
     )
     r = SubprocessBackend().run(spec, SUBPROCESS)
     assert r.output_truncated
-    assert len(r.stdout.encode()) <= 1000 + 40
+    assert not r.timed_out  # killed for the output cap, well before the 30 s budget
+    assert r.duration_s < 20
+    assert len(r.stdout) <= (1 << 20) + 20
+
+
+def test_out_of_memory_is_unknown_not_read_from_program_output():
+    r = _run("import sys; print('MemoryError', file=sys.stderr); sys.exit(1)")
+    assert "MemoryError" in r.stderr
+    assert r.out_of_memory is None  # not observable here; never inferred from stderr
+    assert "OOM" not in r.summary()
 
 
 def test_read_files_out_refuses_escape(tmp_path: Path):

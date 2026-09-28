@@ -5,9 +5,9 @@ Known-answer input:
   2. Five attacks whose outcome the harness verifies for itself (not the attacker):
        env_secret_read  -- only the inheriting subprocess baseline leaks the host secret
        orphan_survivor  -- only the subprocess baseline lets a detached child outlive the run
-       tcp_egress       -- plain Docker still reaches the network; hardened does not
-       run_as_root      -- plain Docker runs your code as uid 0; hardened runs as 65534
-       memory_bomb      -- plain Docker lets it allocate 300 MB; hardened OOM-kills it
+       tcp_egress       -- docker-baseline still reaches the network; hardened does not
+       run_as_root      -- docker-baseline runs your code as uid 0; hardened runs as 65534
+       memory_bomb      -- docker-baseline lets it allocate 300 MB; hardened OOM-kills it
 If Docker is not running, only the subprocess column is shown.
 
 Run:  uv run python demo.py
@@ -42,7 +42,7 @@ def main() -> None:
     print("=" * 76)
     print("2) Five attacks x three profiles -- outcome decided by the harness")
     print("=" * 76)
-    profiles = ["subprocess"] + (["default", "hardened"] if docker else [])
+    profiles = ["subprocess"] + (["docker-baseline", "hardened"] if docker else [])
     by_name = {a.name: a for a in build_attacks()}
     runner = ChaosRunner(sandbox, reps=1)
     try:
@@ -50,17 +50,17 @@ def main() -> None:
     finally:
         runner.close()
 
-    header = f"{'attack':17s}" + "".join(f"{p:>12s}" for p in profiles)
+    header = f"{'attack':17s}" + "".join(f"{p:>17s}" for p in profiles)
     print(header)
     print("-" * len(header))
     for n in SHOWCASE:
-        print(f"{n:17s}" + "".join(f"{cells[(n, p)].verdict:>12s}" for p in profiles))
+        print(f"{n:17s}" + "".join(f"{cells[(n, p)].verdict:>17s}" for p in profiles))
     print()
     print("succeeded = the sandbox did NOT contain it; blocked = it held.")
     if not docker:
         print("(Docker engine not detected -- only the unsafe subprocess baseline was run.)")
         return
-    for p in ("default", "hardened"):
+    for p in ("docker-baseline", "hardened"):
         print(f"\nEvidence under {p}:")
         for n in SHOWCASE:
             c = cells[(n, p)]
