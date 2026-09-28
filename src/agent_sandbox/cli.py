@@ -96,7 +96,8 @@ def _parse_files_in(items: list[str]) -> dict[str, bytes]:
         # Split on the LAST ':' that is not a Windows drive colon (C:\...).
         local, rel = item, None
         idx = item.rfind(":")
-        if idx > 1:
+        drive_colon = idx == 1 and item[0].isalpha() and item[2:3] in ("\\", "/")
+        if idx > 0 and not drive_colon:
             local, rel = item[:idx], item[idx + 1 :]
         path = Path(local)
         if not path.is_file():

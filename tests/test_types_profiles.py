@@ -289,3 +289,23 @@ def test_cli_cleanup_removes_only_stopped_containers_by_default(monkeypatch, cap
     assert calls == ["stopped", "abc"]
     out = capsys.readouterr().out
     assert "removed 2 stopped" in out and "session abc" in out
+
+
+def test_cli_file_in_short_relative_local_path_with_rename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a").write_text("x")
+    with pytest.raises(SystemExit) as e:  # "a:." used to be read as a local file named "a:."
+        cli.main(["run", "--profile", "subprocess", "--file-in", "a:.", "--code", "print(1)"])
+    assert "normal form" in str(e.value)
+    rc = cli.main(
+        [
+            "run",
+            "--profile",
+            "subprocess",
+            "--file-in",
+            "a:b.txt",
+            "--code",
+            "print(open('b.txt').read())",
+        ]
+    )
+    assert rc == 0
