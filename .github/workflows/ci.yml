@@ -23,4 +23,4 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest -v -m "not docker"
+      - run: uv run --with pytest-timeout pytest -v --timeout 120 -m "not docker"
