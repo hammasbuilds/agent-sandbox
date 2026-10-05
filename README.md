@@ -47,7 +47,7 @@ output, a marker file that kept changing after the run returned.
 > [!IMPORTANT]
 > **Containment results are from the pre-fix run (commit 4f723dd) and are pending a rerun
 > and a scoring review.** They were produced before the runtime fixes listed in
-> [STATUS.md](STATUS.md) (kill-after on the timeout, streamed output cap, tmpfs workspace,
+> [docs/RUNTIME_FIXES.md](docs/RUNTIME_FIXES.md) (kill-after on the timeout, streamed output cap, tmpfs workspace,
 > OOM read from Docker's state, beacon bound to loopback). In the containment claim and
 > tables below, `default` is the profile now named `docker-baseline`: it was never a plain
 > `docker run`, because it carried the host-safety limits described under

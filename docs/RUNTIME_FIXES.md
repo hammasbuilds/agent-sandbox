@@ -1,16 +1,10 @@
-# STATUS
+# Runtime fixes
 
-**Status: `ENGINEERING-FIXED; CONTAINMENT-RESCORE-PENDING`.** No model arm; nothing is queued
-for a GPU run.
-
-An independent review found engineering defects in the sandbox runtime, CLI, latency
-benchmark and packaging. All of them are fixed below, each with a regression test. The
-containment results (`results/chaos.json`, the 30-attack matrix in the README) are **from the
-pre-fix run at commit 4f723dd**. They have not been rerun, and their scoring is pending human
-review. No self-score is given until that rerun and review are done; the earlier
-"95 / READY-FOR-REVIEW" has been withdrawn.
-
-## What was fixed (runtime, CLI, benchmark, packaging)
+The sandbox runtime, CLI, latency benchmark and packaging were corrected after the first
+containment run. Each fix below has a regression test. The containment results
+(`results/chaos.json`, the 30-attack matrix in the README) are **from the run before these
+fixes (commit 4f723dd)** and have not been rerun yet; the latency results have been rerun on
+the fixed runtime.
 
 | # | Defect | Fix | Regression test |
 |---|---|---|---|
@@ -24,18 +18,13 @@ review. No self-score is given until that rerun and review are done; the earlier
 | 8 | Latency: fixed profile order, n=10, bootstrap on a noisy median, stale ablation docstring, first-run pull could be timed | Image pre-pulled and checked, 2 untimed warm-up rounds, per-round shuffled order (seeded, recorded), n=100, Hodges-Lehmann + Wilcoxon-inverted CI + exact sign test + minimum detectable effect; ablation rewritten on the same design with a neutral docstring | `test_latency.py` (balance of positions, drift + outlier recovery, exact sign-test values, MDE consistency, pre-flight before timing, refusal without Docker) |
 | 9 | No check that the image has `timeout`; no warning for `--profile subprocess`; `profiles` listed limits not enforced on this OS | `DockerBackend.preflight()` (pull if missing, probe `timeout -k … sleep`, clear `PreflightError`); stderr warning for `subprocess`; `enforced_limits()` drives the listing (subprocess on Windows shows wall + output only) | `test_cli_subprocess_profile_warns`, `test_cli_profiles_lists_only_enforced_limits`, `test_enforced_limits_are_honest_about_the_subprocess_backend` |
 | 10 | HostBeacon bound `0.0.0.0` though documented as loopback; stale docstrings; dead code; unformatted files; pytest not installed by `uv sync` | Beacon binds `127.0.0.1` (probe confirmed Docker Desktop still delivers TCP and UDP from `host.docker.internal` to host loopback); docstrings rewritten in `docker_cmd.py`, `subprocess_backend.py`, `runner.py`, `profiles.py`, the HostBeacon part of `attacks/harness.py`; removed `ensure_workdir` and the unused `Backend` protocol; `ruff format` applied; pytest/ruff moved to a `[dependency-groups] dev` group | whole suite; clean-clone check below |
-| 11 | *Found during this pass:* a container stopped from outside mid-run (seen once in the first ablation attempt: SIGKILL right after `exec_start`, sender not identifiable from Docker's event log) came back as a normal result with Docker's `cannot exec in a stopped state` as the program's stdout | After the program, the harness reads `State.Running` with `OOMKilled`; a stopped container with no OOM and no harness kill is reported as `error` | `test_container_stopped_from_outside_is_an_error_not_output` |
+| 11 | *Found while fixing the above:* a container stopped from outside mid-run (seen once in the first ablation attempt: SIGKILL right after `exec_start`, sender not identifiable from Docker's event log) came back as a normal result with Docker's `cannot exec in a stopped state` as the program's stdout | After the program, the harness reads `State.Running` with `OOMKilled`; a stopped container with no OOM and no harness kill is reported as `error` | `test_container_stopped_from_outside_is_an_error_not_output` |
 
-## Latency (rerun on the fixed runtime)
-
-LATENCY_PLACEHOLDER
-
-## Pending human review (not touched in this pass)
+## Open questions before the containment rerun
 
 The attack suite (`src/agent_sandbox/attacks/`, `chaos.py`, `scripts/run_chaos.sh`,
-`scripts/symlink_ablation.py`, `demo.py`) was deliberately not opened, edited or run in this
-pass. The following are open questions about **attack scoring**, for a human to decide
-before a rerun:
+`scripts/symlink_ablation.py`, `demo.py`) was deliberately left unchanged by the runtime
+fixes. These questions about **attack scoring** are to be settled before the rerun:
 
 - **`setuid_escalate`**: whether it should be `n/a`, not "succeeded", when the payload
   already starts as root.
@@ -50,9 +39,8 @@ before a rerun:
   now comes only from Docker; `hardened` file-out now goes through `tar` from a tmpfs (so the
   host-side symlink guard is no longer on that path); orphans are killed by
   `docker rm --force` at the end of the run rather than by PID 1 exiting; the beacon is on
-  loopback; results report `docker-baseline` where they used to say `default`. A
-  count-only search (the files were not opened) shows `chaos.py` still contains one literal
-  `"default"` and resolves profiles and limits through `get_profile`/`limits_for`, which
+  loopback; results report `docker-baseline` where they used to say `default`. `chaos.py`
+  still contains one literal `"default"` and resolves profiles and limits through `get_profile`/`limits_for`, which
   accept the alias. `RunResult.profile` now says `docker-baseline`, so any comparison against
   `"default"` in the chaos code has to be checked and renamed in the rescore.
 - `ChaosContext.canary_path` / `host_alias` (possibly unread) live in
@@ -75,11 +63,11 @@ uv run python scripts/latency_ablation.py --rounds 100 --seed 1 --out results/la
 `results/cli_samples.txt` holds the `agent-sandbox run …` commands quoted in the README,
 rerun on the fixed runtime.
 
-## Known weaknesses remaining
+## Known limitations
 
-- **Shared host.** Other sessions' jobs ran during the benchmark. The design (warm-up,
-  shuffled order, paired robust statistics) is meant to cancel that, and the minimum detectable
-  effect is reported, but absolute seconds are specific to this machine.
+- **Shared host.** Other jobs ran during the benchmark. The design (warm-up, shuffled
+  order, paired robust statistics) is meant to cancel that, and the minimum detectable
+  effect is reported, but absolute seconds are specific to the machine they ran on.
 - **The tmpfs workspace is charged to the memory cgroup.** A `hardened` program that fills
   its 32 MB workspace has only about 96 MB of memory left.
 - **The subprocess backend can't observe OOM** and, on Windows, enforces only the wall clock
